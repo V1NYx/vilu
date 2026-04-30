@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }} — VILU{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <a href="{{ url_for('home') }}" class="btn btn-outline btn-sm" style="margin-bottom:1.5rem">← Voltar</a>
+
+  <div class="card">
+    <div class="detail-layout">
+
+      {% if poster_url %}
+        <img src="{{ poster_url }}" class="detail-poster" alt="Pôster de {{ titulo }}">
+      {% else %}
+        <div class="detail-poster-placeholder">🎬</div>
+      {% endif %}
+
+      <div class="detail-info">
+        <h1>{{ titulo }}</h1>
+
+        <div class="generos-row">
+          {% for g in generos %}
+            <span class="tag-genero">{{ g }}</span>
+          {% endfor %}
+        </div>
+
+        <div class="nota-media">
+          ★ {{ nota_media }} / 5.0
+          <span style="font-size:0.8rem;color:var(--text-muted);font-weight:400"> — média MovieLens</span>
+        </div>
+
+        <p class="sinopse">{{ sinopse }}</p>
+
+        <!-- AVALIAÇÃO PRIVADA -->
+        <div class="avaliar-form">
+          {% if nota_usuario %}
+            <div class="alert alert-info" style="margin-bottom:0.75rem">
+              Sua avaliação: <strong>{{ nota_usuario }} / 5.0</strong> — atualize abaixo se quiser.
+            </div>
+          {% else %}
+            <h3>Avaliar este filme</h3>
+            <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem">
+              Sua nota é privada e melhora suas recomendações. Se comentar, ela aparece no post.
+            </p>
+          {% endif %}
+
+          <form method="POST" action="{{ url_for('avaliar') }}">
+            <input type="hidden" name="movie_id" value="{{ movie_id }}">
+            <input type="hidden" name="titulo"   value="{{ titulo }}">
+            <input type="hidden" name="nota"     id="nota-hidden" value="">
+            <div class="rating-row">
+              {% for n in [1, 2, 3, 4, 5] %}
+                <button type="button"
+                  class="star-btn {% if nota_usuario and nota_usuario|int == n %}selected{% endif %}"
+                  data-nota="{{ n }}"
+                  onclick="selecionarNota({{ n }})">
+                  {{ n }} ★
+                </button>
+              {% endfor %}
+              <button type="submit" class="btn btn-primary btn-sm" id="btn-avaliar" style="display:none">
+                Salvar nota
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PUBLICAR COMENTÁRIO -->
+  <div class="card">
+    <h3 style="margin-bottom:0.5rem">Publicar no Feed</h3>
+
+    {% if nota_usuario %}
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">
+        Seu comentário será publicado com sua avaliação de <strong style="color:var(--yellow)">{{ nota_usuario }} ★</strong>.
+      </p>
+    {% else %}
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">
+        Você ainda não avaliou este filme. Pode comentar assim mesmo — o post ficará sem nota.
+        Para incluir uma nota, avalie o filme acima primeiro.
+      </p>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('comentar') }}">
+      <input type="hidden" name="movie_id" value="{{ movie_id }}">
+      <input type="hidden" name="titulo"   value="{{ titulo }}">
+
+      <div class="form-group">
+        <textarea name="comentario" rows="3"
+          placeholder="O que você achou de {{ titulo }}?"
+          maxlength="500"
+          style="width:100%;padding:0.65rem 1rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.95rem;resize:vertical;outline:none;font-family:inherit"
+          required></textarea>
+        <div style="font-size:0.78rem;color:var(--text-muted);text-align:right;margin-top:4px">máx. 500 caracteres</div>
+      </div>
+
+      <button type="submit" class="btn btn-primary">Publicar</button>
+    </form>
+  </div>
+
+  <!-- COMENTÁRIOS DO FILME -->
+  {% if comentarios %}
+    <h3 style="margin-bottom:0.75rem;font-size:1rem;color:var(--text-muted)">
+      {{ comentarios|length }} comentário{% if comentarios|length != 1 %}s{% endif %}
+    </h3>
+
+    {% for c in comentarios %}
+      <div class="post-card">
+        <div class="post-header">
+          <a href="{{ url_for('usuario_publico', uid=c.autor_id) }}" class="post-autor">{{ c.autor }}</a>
+          {% if c.nota %}<span class="post-nota">{{ c.nota }} ★</span>{% endif %}
+          <span class="post-data">{{ c.data[:10] }}</span>
+        </div>
+        <div class="post-texto">{{ c.comentario }}</div>
+        {% if c.autor_id == user_id %}
+          <div class="post-actions">
+            <form method="POST" action="{{ url_for('excluir_comentario', comentario_id=c.id) }}"
+                  style="display:inline" onsubmit="return confirm('Excluir este comentário?')">
+              <button type="submit" class="btn-excluir">🗑️ Excluir</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+  {% else %}
+    <div class="empty-state" style="padding:2rem">
+      <div class="icon">💬</div>
+      <p>Nenhum comentário ainda. Seja o primeiro!</p>
+    </div>
+  {% endif %}
+
+</div>
+
+<script>
+function selecionarNota(n) {
+  document.getElementById('nota-hidden').value = n;
+  document.querySelectorAll('.star-btn').forEach(btn => {
+    btn.classList.toggle('selected', parseInt(btn.dataset.nota) <= n);
+  });
+  document.getElementById('btn-avaliar').style.display = 'inline-flex';
+}
+{% if nota_usuario %}
+  selecionarNota({{ nota_usuario|int }});
+{% endif %}
+</script>
+{% endblock %}

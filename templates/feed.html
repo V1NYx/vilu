@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Feed — VILU{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <div class="feed-header">
+    <h1>Feed da Comunidade</h1>
+    <p>Veja o que outros usuários estão assistindo e comentando</p>
+  </div>
+
+  {% if posts %}
+    {% for p in posts %}
+      <div class="post-card">
+        <div class="post-header">
+          <a href="{{ url_for('usuario_publico', uid=p.autor_id) }}" class="post-autor">{{ p.autor }}</a>
+          {% if p.nota %}<span class="post-nota">{{ p.nota }} ★</span>{% endif %}
+          <span class="post-data">{{ p.data[:10] }}</span>
+        </div>
+        <a href="{{ url_for('detalhes', nome_filme=p.titulo) }}" class="post-filme">🎬 {{ p.titulo }}</a>
+        <div class="post-texto">{{ p.comentario }}</div>
+        <div class="post-actions">
+          <a href="{{ url_for('detalhes', nome_filme=p.titulo) }}" class="btn-ver-filme">Ver filme →</a>
+          {% if p.autor_id == user_id %}
+            <form method="POST" action="{{ url_for('excluir_comentario', comentario_id=p.id) }}"
+                  style="display:inline" onsubmit="return confirm('Excluir este post?')">
+              <button type="submit" class="btn-excluir">🗑️ Excluir</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state" style="padding:4rem">
+      <div class="icon">🍿</div>
+      <p>Nenhum comentário no feed ainda. Seja o primeiro!</p>
+      <a href="{{ url_for('home') }}" class="btn btn-primary" style="margin-top:1.5rem">Buscar filmes</a>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

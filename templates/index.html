@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}VILU — Buscar Filmes{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <!-- Hero de busca -->
+  <div class="search-hero">
+    <h1>Encontre seu próximo filme</h1>
+    <p>Digite um título e o VILU recomenda com explicação do porquê</p>
+
+    <form method="POST">
+      <div class="search-row">
+        <input
+          type="text"
+          name="nome_filme"
+          placeholder="Ex: Inception, Matrix, Toy Story..."
+          value="{{ filme_escolhido }}"
+          required
+          autofocus
+        >
+        <button type="submit" class="btn btn-primary">Buscar</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Erro de busca -->
+  {% if erro %}
+    <div class="alert alert-error">{{ erro }}</div>
+  {% endif %}
+
+  <!-- Resultado -->
+  {% if filme_escolhido %}
+    <div class="card">
+
+      <!-- Cabeçalho: pôster + título + badge de modo + explicação XAI -->
+      <div class="result-header">
+        {% if poster_principal %}
+          <img src="{{ poster_principal }}" class="result-poster" alt="Pôster de {{ filme_escolhido }}">
+        {% else %}
+          <div class="result-poster-placeholder">🎬</div>
+        {% endif %}
+
+        <div class="result-info">
+          <h2>{{ filme_escolhido }}</h2>
+
+          {% if modo == 'colaborativo' %}
+            <span class="badge badge-colab">Filtragem Colaborativa</span>
+          {% else %}
+            <span class="badge badge-content">Filtragem por Conteúdo</span>
+          {% endif %}
+
+          <!-- Caixa de explicação XAI -->
+          <div class="xai-box">
+            <strong>Por que essas recomendações?</strong><br>
+            {{ explicacao }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista de recomendações clicáveis -->
+      <h3 style="font-size:1rem; margin-bottom:0.75rem; color:var(--text-muted)">Sugestões para você</h3>
+      <ul class="rec-list">
+        {% for item in lista_recomendacoes %}
+          <a href="{{ url_for('detalhes', nome_filme=item.titulo) }}" class="rec-item">
+            <span class="rec-title">{{ item.titulo }}</span>
+            <span class="rec-conf {% if item.confianca == 'Por Gênero' %}genero{% endif %}">
+              {{ item.confianca }}
+            </span>
+          </a>
+        {% endfor %}
+      </ul>
+
+    </div>
+  {% else %}
+    <!-- Estado inicial vazio -->
+    <div class="empty-state">
+      <div class="icon">🍿</div>
+      <p>Digite um filme acima para começar</p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

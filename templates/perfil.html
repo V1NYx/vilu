@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Meu Perfil — VILU{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <div class="perfil-header">
+    <h1>Meu Perfil</h1>
+    <p>Suas avaliações e publicações no feed</p>
+  </div>
+
+  <div style="display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap">
+    <div class="card" style="padding:1rem 1.25rem;min-width:140px;flex:1">
+      <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.25rem">Filmes avaliados</div>
+      <div style="font-size:1.5rem;font-weight:700">{{ avaliacoes|length }}</div>
+    </div>
+    <div class="card" style="padding:1rem 1.25rem;min-width:140px;flex:1">
+      <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.25rem">Publicações</div>
+      <div style="font-size:1.5rem;font-weight:700">{{ comentarios|length }}</div>
+    </div>
+    {% if avaliacoes %}
+    <div class="card" style="padding:1rem 1.25rem;min-width:140px;flex:1">
+      <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.25rem">Nota média</div>
+      <div style="font-size:1.5rem;font-weight:700;color:var(--yellow)">
+        {{ "%.1f"|format(avaliacoes|map(attribute='nota')|list|sum / avaliacoes|length) }} ★
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <h3 style="font-size:1rem;color:var(--text-muted);margin-bottom:0.75rem">
+    🔒 Avaliações privadas
+  </h3>
+
+  {% if avaliacoes %}
+    {% for av in avaliacoes %}
+      <a href="{{ url_for('detalhes', nome_filme=av.titulo) }}"
+         class="hist-item" style="display:flex;text-decoration:none;color:inherit">
+        <div>
+          <div class="hist-titulo">{{ av.titulo }}</div>
+          <div class="hist-data">{{ av.data[:10] }}</div>
+        </div>
+        <div class="hist-nota">{{ av.nota }} ★</div>
+      </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state" style="padding:1.5rem">
+      <p>Você ainda não avaliou nenhum filme.</p>
+    </div>
+  {% endif %}
+
+  <h3 style="font-size:1rem;color:var(--text-muted);margin:1.5rem 0 0.75rem">📢 Suas publicações</h3>
+
+  {% if comentarios %}
+    {% for c in comentarios %}
+      <div class="post-card">
+        <div class="post-header">
+          <span class="post-autor">Você</span>
+          {% if c.nota %}<span class="post-nota">{{ c.nota }} ★</span>{% endif %}
+          <span class="post-data">{{ c.data[:10] }}</span>
+        </div>
+        <a href="{{ url_for('detalhes', nome_filme=c.titulo) }}" class="post-filme">🎬 {{ c.titulo }}</a>
+        <div class="post-texto">{{ c.comentario }}</div>
+        <div class="post-actions">
+          <form method="POST" action="{{ url_for('excluir_comentario', comentario_id=c.id) }}"
+                style="display:inline" onsubmit="return confirm('Excluir?')">
+            <button type="submit" class="btn-excluir">🗑️ Excluir</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state" style="padding:1.5rem">
+      <p>Você ainda não publicou nenhum comentário.</p>
+      <a href="{{ url_for('home') }}" class="btn btn-primary" style="margin-top:1rem">Buscar filmes</a>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

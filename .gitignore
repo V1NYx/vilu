@@ -1,0 +1,28 @@
+# Banco de dados local — cada dev tem o seu
+vilu.db
+
+# Cache do Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Dataset — cada dev baixa do MovieLens (grouplens.org)
+dataset/
+
+# Variáveis de ambiente (chaves de API, senhas)
+.env
+*.env
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Virtual environment
+venv/
+env/

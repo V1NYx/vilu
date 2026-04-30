@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ usuario.nome }} — VILU{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <div class="card" style="text-align:center;padding:2rem">
+    <div style="font-size:3rem;margin-bottom:0.75rem">👤</div>
+    <h1 style="font-size:1.4rem">{{ usuario.nome }}</h1>
+    <p style="color:var(--text-muted);font-size:0.85rem;margin-top:0.4rem">
+      Membro desde {{ usuario.criado_em[:10] }}
+    </p>
+    <p style="color:var(--text-muted);font-size:0.9rem;margin-top:0.5rem">
+      {{ comentarios|length }} publicação{% if comentarios|length != 1 %}ões{% endif %}
+    </p>
+  </div>
+
+  {% if comentarios %}
+    <h3 style="margin:1.5rem 0 0.75rem;font-size:1rem;color:var(--text-muted)">
+      Publicações de {{ usuario.nome }}
+    </h3>
+    {% for c in comentarios %}
+      <div class="post-card">
+        <div class="post-header">
+          <span class="post-autor">{{ usuario.nome }}</span>
+          {% if c.nota %}<span class="post-nota">{{ c.nota }} ★</span>{% endif %}
+          <span class="post-data">{{ c.data[:10] }}</span>
+        </div>
+        <a href="{{ url_for('detalhes', nome_filme=c.titulo) }}" class="post-filme">🎬 {{ c.titulo }}</a>
+        <div class="post-texto">{{ c.comentario }}</div>
+        <div class="post-actions">
+          <a href="{{ url_for('detalhes', nome_filme=c.titulo) }}" class="btn-ver-filme">Ver filme →</a>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state" style="padding:3rem">
+      <div class="icon">💬</div>
+      <p>{{ usuario.nome }} ainda não publicou nenhum comentário.</p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

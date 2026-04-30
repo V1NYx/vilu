@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Página não encontrada — VILU{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="empty-state" style="padding:5rem 1rem">
+    <div class="icon">🎬</div>
+    <h2 style="margin-bottom:0.5rem">Ops, página não encontrada</h2>
+    <p>{{ mensagem }}</p>
+    <a href="{{ url_for('home') }}" class="btn btn-primary" style="margin-top:1.5rem">
+      Voltar para o início
+    </a>
+  </div>
+</div>
+{% endblock %}

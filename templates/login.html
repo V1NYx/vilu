@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>VILU — Entrar</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-card">
+
+    <div class="auth-logo">VILU</div>
+    <div class="auth-subtitle">Seu qualificador de filmes e séries</div>
+
+    {% if erro %}
+      <div class="alert alert-error">{{ erro }}</div>
+    {% endif %}
+
+    <form method="POST">
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" placeholder="seu@email.com" required autofocus>
+      </div>
+      <div class="form-group">
+        <label for="senha">Senha</label>
+        <input type="password" id="senha" name="senha" placeholder="••••••••" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full" style="margin-top:0.5rem">Entrar</button>
+    </form>
+
+    <div class="auth-footer">
+      Não tem conta? <a href="{{ url_for('auth.cadastro') }}">Criar conta grátis</a>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
