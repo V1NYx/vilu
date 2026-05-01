@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session
+import re
 from werkzeug.security import generate_password_hash, check_password_hash
 from database import get_db
 
@@ -23,6 +24,8 @@ def cadastro():
         # Validações básicas
         if not nome or not email or not senha:
             erro = 'Preencha todos os campos.'
+        elif not re.match(r'^[\w.+-]+@[\w-]+\.\w+$', email):
+            erro = 'Email inválido. Use o formato: nome@dominio.com'
         elif len(senha) < 6:
             erro = 'A senha deve ter pelo menos 6 caracteres.'
         else:
@@ -74,7 +77,7 @@ def login():
             session.clear()
             session['user_id']   = usuario['id']
             session['user_nome'] = usuario['nome']
-            return redirect(url_for('home'))
+            return redirect(url_for('principal'))
         else:
             erro = 'Email ou senha incorretos.'
 

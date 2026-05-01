@@ -7,6 +7,7 @@ DB_PATH = 'vilu.db'
 def get_db():
     """Abre e retorna uma conexão com o banco de dados."""
     conn = sqlite3.connect(DB_PATH)
+    # row_factory permite acessar colunas por nome: row['nome'] em vez de row[0]
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -18,7 +19,7 @@ def criar_tabelas():
     """
     conn = get_db()
 
-    # Tabela de usuários
+    # Tabela de usuários: cadastros com senha criptografada
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,7 +30,9 @@ def criar_tabelas():
         )
     """)
 
-    # Avaliações privadas — usadas pelo XAI pessoal
+    # Avaliações privadas: alimentam o XAI e as recomendações personalizadas
+    # UNIQUE(user_id, movie_id): cada usuário avalia um filme apenas uma vez
+    # ON CONFLICT DO UPDATE no app.py atualiza a nota em vez de rejeitar
     conn.execute("""
         CREATE TABLE IF NOT EXISTS avaliacoes (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,7 +46,8 @@ def criar_tabelas():
         )
     """)
 
-    # Comentários públicos — aparecem no feed social
+    # Comentários públicos: aparecem no feed da comunidade (página Principal)
+    # Sem UNIQUE: o mesmo usuário pode comentar o mesmo filme mais de uma vez
     conn.execute("""
         CREATE TABLE IF NOT EXISTS comentarios (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,23 +61,10 @@ def criar_tabelas():
         )
     """)
 
-    # Curtidas nos comentários do feed
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS curtidas (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id       INTEGER NOT NULL,
-            comentario_id INTEGER NOT NULL,
-            data          TEXT    DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id)       REFERENCES users(id),
-            FOREIGN KEY (comentario_id) REFERENCES comentarios(id),
-            UNIQUE(user_id, comentario_id)
-        )
-    """)
-
     conn.commit()
     conn.close()
     print(f"Banco criado em: {DB_PATH}")
-    print("Tabelas: users, avaliacoes, comentarios, curtidas")
+    print("Tabelas: users, avaliacoes, comentarios")
 
 
 if __name__ == '__main__':

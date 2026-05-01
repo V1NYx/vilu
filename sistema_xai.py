@@ -53,10 +53,6 @@ print(f"Pronto! {len(filmes)} filmes | {len(notas)} avaliações carregadas.")
 
 # ── HELPERS DE GÊNERO ─────────────────────────────────────────────────────────
 
-def _generos_do_titulo(titulo):
-    """Retorna o set de gêneros de um título. Ex: {'Action', 'Sci-Fi'}"""
-    return _generos_idx.get(titulo, set())
-
 
 def _sobreposicao(titulo_a, titulo_b):
     """

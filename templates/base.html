@@ -9,14 +9,16 @@
 <body>
 
 <nav class="navbar">
-  <a href="{{ url_for('home') }}" class="navbar-brand">VILU</a>
+  <a href="{{ url_for('principal') }}" class="navbar-brand">VILU</a>
+
   <div class="navbar-links">
     {% if session.user_nome %}
-      <a href="{{ url_for('feed') }}" class="nav-feed">Feed</a>
+      <a href="{{ url_for('principal') }}">Principal</a>
       <a href="{{ url_for('home') }}">Buscar</a>
-      <span class="navbar-user">{{ session.user_nome }}</span>
       <a href="{{ url_for('perfil') }}">Meu Perfil</a>
-      <a href="{{ url_for('auth.logout') }}">Sair</a>
+      <span class="navbar-divider">|</span>
+      <span class="navbar-user">{{ session.user_nome }}</span>
+      <a href="{{ url_for('auth.logout') }}" class="nav-sair">Sair</a>
     {% else %}
       <a href="{{ url_for('auth.login') }}">Entrar</a>
       <a href="{{ url_for('auth.cadastro') }}">Criar conta</a>

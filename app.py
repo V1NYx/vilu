@@ -1,40 +1,58 @@
 """
-app.py — Servidor principal do VILU
+app.py — Servidor principal do VILU (projeto acadêmico)
 
-Mudanças desta versão:
-  - /comentar agora herda automaticamente a avaliação já salva pelo usuário.
-    Se não tiver avaliado, publica sem nota. Sem estrelas no formulário de comentário.
-  - Curtidas removidas do feed (simplificação solicitada)
-  - import pandas removido (não era usado diretamente aqui)
+Rotas:
+  /              → Busca de filmes e recomendações
+  /principal     → Página principal: busca + avaliações da comunidade
+  /buscar_filmes → Autocomplete de títulos em JSON (chamado pelo JS)
+  /detalhes/<f>  → Detalhes do filme: XAI, avaliação, comentários
+  /avaliar       → Salva avaliação privada (POST)
+  /comentar      → Publica comentário no feed (POST)
+  /excluir_comentario/<id> → Exclui comentário próprio (POST)
+  /perfil        → Histórico do usuário logado
+  /usuario/<id>  → Perfil público de outro usuário
+  /login /cadastro /logout → Autenticação (via auth.py)
 """
 
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from functools import wraps
 import requests
 import re
+import os
+
+# Carrega variáveis do arquivo .env se existir (recomendado para não expor chaves)
+# Instalar com: pip install python-dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv não instalado — usa os valores padrão abaixo
 
 from database import get_db, criar_tabelas
 from auth import auth as auth_blueprint
-from sistema_xai import recomendar_hibrido, filmes, dados_completos
+from sistema_xai import recomendar_hibrido, filmes, dados_completos, _generos_idx
+from sistema_xai import buscar_historico_usuario, _historico_relevante
 
 # ── CONFIGURAÇÃO ──────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
-app.secret_key = 'vilu-chave-secreta-troque-em-producao-2024'
+
+# Lê do .env se disponível, senão usa o valor padrão (mude antes de ir ao ar)
+app.secret_key  = os.getenv('SECRET_KEY', 'vilu-chave-secreta-troque-em-producao-2024')
 app.register_blueprint(auth_blueprint)
 criar_tabelas()
 
-TMDB_API_KEY = '417fbe5b98d6a5a1daff00dfc9a77915'
+TMDB_API_KEY = os.getenv('TMDB_API_KEY', '417fbe5b98d6a5a1daff00dfc9a77915')
 
-# Cache simples em memória para resultados TMDB
-# Evita chamar a API toda vez que a mesma página é acessada
+# Cache em memória: evita chamar a API TMDB a cada pageview do mesmo filme.
+# Chave = título do filme. Valor = (sinopse, poster_url).
 _cache_tmdb = {}
 
 
-# ── DECORATOR ────────────────────────────────────────────────────────────────
+# ── DECORATOR: proteção de rotas ──────────────────────────────────────────────
 
 def login_required(f):
-    from functools import wraps
+    """Redireciona para /login se o usuário não estiver autenticado."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if 'user_id' not in session:
@@ -43,33 +61,41 @@ def login_required(f):
     return decorated
 
 
-# ── TMDB ─────────────────────────────────────────────────────────────────────
+# ── TMDB ──────────────────────────────────────────────────────────────────────
 
 def buscar_info_tmdb(titulo_movielens):
     """
-    Busca sinopse e pôster no TMDB.
-    Usa cache em memória: na segunda chamada com o mesmo título,
-    retorna instantaneamente sem fazer requisição HTTP.
+    Busca sinopse e pôster no TMDB pelo título do filme.
+    Remove o ano entre parênteses antes de buscar (ex: 'Toy Story (1995)' → 'Toy Story').
+    Salva o resultado no cache para evitar repetir a requisição HTTP.
     """
     if titulo_movielens in _cache_tmdb:
         return _cache_tmdb[titulo_movielens]
 
     titulo_limpo = re.sub(r'\s*\(\d{4}\)', '', titulo_movielens).strip()
-    url    = 'https://api.themoviedb.org/3/search/movie'
-    params = {'api_key': TMDB_API_KEY, 'query': titulo_limpo, 'language': 'pt-BR'}
+    params = {
+        'api_key':  TMDB_API_KEY,
+        'query':    titulo_limpo,
+        'language': 'pt-BR'
+    }
 
     try:
-        resp = requests.get(url, params=params, timeout=5)
+        resp = requests.get(
+            'https://api.themoviedb.org/3/search/movie',
+            params=params, timeout=5
+        )
         if resp.status_code == 401:
             result = ('Chave da API TMDB inválida.', None)
         else:
-            dados      = resp.json()
-            resultados = dados.get('results', [])
+            resultados = resp.json().get('results', [])
             if resultados:
-                f          = resultados[0]
-                sinopse    = f.get('overview') or 'Sinopse não disponível em português.'
-                poster_path = f.get('poster_path')
-                poster_url  = f'https://image.tmdb.org/t/p/w500{poster_path}' if poster_path else None
+                item        = resultados[0]
+                sinopse     = item.get('overview') or 'Sinopse não disponível em português.'
+                poster_path = item.get('poster_path')
+                poster_url  = (
+                    f'https://image.tmdb.org/t/p/w500{poster_path}'
+                    if poster_path else None
+                )
                 result = (sinopse, poster_url)
             else:
                 result = ('Sinopse não disponível.', None)
@@ -83,11 +109,84 @@ def buscar_info_tmdb(titulo_movielens):
     return result
 
 
-# ── HOME ──────────────────────────────────────────────────────────────────────
+# ── HELPER: texto XAI de reforço para a página de detalhes ───────────────────
+
+def gerar_xai_detalhe(nome_filme, nota_usuario, user_id=None):
+    """
+    Gera a explicação XAI exibida na página de detalhes do filme,
+    próxima à sinopse. Personalizada: cita filmes reais do histórico
+    do usuário que compartilham gênero com o filme visualizado.
+    """
+    generos_set = _generos_idx.get(nome_filme, set())
+    generos_str = ', '.join(sorted(generos_set)) if generos_set else 'variados'
+
+    xai = (
+        f"Este filme pertence aos gêneros {generos_str}. "
+    )
+
+    # Busca histórico e filtra por relevância de gênero
+    if user_id:
+        historico  = buscar_historico_usuario(user_id)
+        relevantes = _historico_relevante(historico, nome_filme, max_itens=2)
+        if relevantes:
+            nomes = ' e '.join([h['titulo'] for h in relevantes])
+            xai += (
+                f"Como você avaliou bem {nomes}, "
+                f"o VILU identificou que este filme combina com o seu perfil de gosto."
+            )
+        else:
+            xai += (
+                f"Com base nas avaliações da comunidade, "
+                f"o VILU identificou que ele pode combinar com o seu perfil."
+            )
+    else:
+        xai += (
+            f"Com base nas avaliações da comunidade, "
+            f"o VILU identificou que ele pode combinar com o seu perfil."
+        )
+
+    if nota_usuario:
+        xai += (
+            f" Você já avaliou este filme com nota {nota_usuario} — "
+            f"essa avaliação alimenta suas recomendações futuras."
+        )
+
+    return xai
+
+
+# ── ROTA: AUTOCOMPLETE DE FILMES ──────────────────────────────────────────────
+
+@app.route('/buscar_filmes')
+@login_required
+def buscar_filmes():
+    """
+    Retorna sugestões de títulos em formato JSON para o autocomplete.
+    Chamada via fetch() pelo JavaScript enquanto o usuário digita.
+    Parâmetro de entrada: ?q=texto_digitado
+    Retorna: lista com até 8 títulos que contêm o texto digitado.
+    """
+    q = request.args.get('q', '').strip()
+    if len(q) < 2:
+        return jsonify([])
+
+    resultados = filmes[
+        filmes['title'].str.contains(q, case=False, na=False)
+    ]['title'].head(8).tolist()
+
+    return jsonify(resultados)
+
+
+# ── ROTA: HOME — busca de filmes ──────────────────────────────────────────────
 
 @app.route('/', methods=['GET', 'POST'])
 @login_required
 def home():
+    """
+    Página de busca de filmes e recomendações.
+    GET  → exibe o formulário de busca vazio.
+    POST → chama o motor híbrido (sistema_xai.py) e exibe as recomendações
+           com badge do algoritmo usado e explicação XAI.
+    """
     recomendacoes    = []
     explicacao       = ''
     filme_escolhido  = ''
@@ -118,11 +217,68 @@ def home():
     )
 
 
-# ── DETALHES ─────────────────────────────────────────────────────────────────
+# ── ROTA: PRINCIPAL — busca + avaliações da comunidade ───────────────────────
+
+@app.route('/principal')
+@login_required
+def principal():
+    """
+    Página principal do VILU.
+    Combina a barra de busca com o feed de avaliações da comunidade.
+    Para cada post, busca o pôster no TMDB (via cache — sem requisições repetidas).
+    """
+    db = get_db()
+    posts_raw = db.execute("""
+        SELECT c.id, c.comentario, c.nota, c.titulo, c.movie_id, c.data,
+               u.nome AS autor, u.id AS autor_id
+        FROM comentarios c
+        JOIN users u ON c.user_id = u.id
+        ORDER BY c.data DESC
+        LIMIT 100
+    """).fetchall()
+    db.close()
+
+    # Enriquece cada post com o poster_url do TMDB
+    # O cache _cache_tmdb garante que filmes repetidos não fazem nova requisição
+    posts = []
+    for p in posts_raw:
+        _, poster_url = buscar_info_tmdb(p['titulo'])
+        posts.append({
+            'id':        p['id'],
+            'comentario':p['comentario'],
+            'nota':      p['nota'],
+            'titulo':    p['titulo'],
+            'movie_id':  p['movie_id'],
+            'data':      p['data'],
+            'autor':     p['autor'],
+            'autor_id':  p['autor_id'],
+            'poster_url':poster_url
+        })
+
+    return render_template(
+        'principal.html',
+        posts     = posts,
+        user_nome = session.get('user_nome', ''),
+        user_id   = session['user_id']
+    )
+
+
+# ── ROTA: DETALHES DO FILME ───────────────────────────────────────────────────
 
 @app.route('/detalhes/<path:nome_filme>')
 @login_required
 def detalhes(nome_filme):
+    """
+    Exibe informações completas do filme:
+      - Pôster e sinopse via TMDB (com cache)
+      - Gêneros e nota média do MovieLens
+      - Explicação XAI de reforço próxima à sinopse
+      - Formulário de avaliação privada (alimenta o XAI)
+      - Formulário de comentário público (herda a nota privada)
+      - Lista de comentários da comunidade sobre o filme
+    O parâmetro ?origem=busca é lido pelo template para exibir
+    o botão 'Voltar à busca' com history.back().
+    """
     busca = filmes[filmes['title'] == nome_filme]
     if len(busca) == 0:
         return render_template('404.html', mensagem='Filme não encontrado.'), 404
@@ -131,15 +287,19 @@ def detalhes(nome_filme):
     movie_id      = int(dados_filme['movieId'])
     generos_lista = dados_filme['genres'].split('|')
 
+    # Nota média do dataset MovieLens
     nota_media = '-'
     if nome_filme in dados_completos['title'].values:
-        media      = dados_completos[dados_completos['title'] == nome_filme]['rating'].mean()
+        media      = dados_completos[
+            dados_completos['title'] == nome_filme
+        ]['rating'].mean()
         nota_media = f'{media:.2f}'
 
     user_id      = session.get('user_id')
     nota_usuario = None
     db = get_db()
 
+    # Avaliação privada do usuário logado para este filme
     row = db.execute(
         'SELECT nota FROM avaliacoes WHERE user_id = ? AND movie_id = ?',
         (user_id, movie_id)
@@ -147,7 +307,7 @@ def detalhes(nome_filme):
     if row:
         nota_usuario = row['nota']
 
-    # Comentários sem curtidas (simplificado)
+    # Comentários públicos ordenados do mais recente para o mais antigo
     comentarios = db.execute("""
         SELECT c.id, c.comentario, c.nota, c.data,
                u.nome AS autor, u.id AS autor_id
@@ -161,6 +321,9 @@ def detalhes(nome_filme):
 
     sinopse, poster_url = buscar_info_tmdb(nome_filme)
 
+    # XAI de reforço: explica por que esse filme foi sugerido
+    xai_detalhe = gerar_xai_detalhe(nome_filme, nota_usuario, user_id)
+
     return render_template(
         'detalhes.html',
         titulo       = nome_filme,
@@ -171,21 +334,32 @@ def detalhes(nome_filme):
         poster_url   = poster_url,
         nota_usuario = nota_usuario,
         comentarios  = comentarios,
+        xai_detalhe  = xai_detalhe,
         user_nome    = session.get('user_nome', ''),
         user_id      = user_id
     )
 
 
-# ── AVALIAR ───────────────────────────────────────────────────────────────────
+# ── ROTA: AVALIAR ─────────────────────────────────────────────────────────────
 
 @app.route('/avaliar', methods=['POST'])
 @login_required
 def avaliar():
+    """
+    Salva ou atualiza a avaliação privada de um filme.
+    ON CONFLICT ... DO UPDATE: se já existe nota para esse usuário e filme,
+    atualiza a nota e a data em vez de gerar erro de duplicata.
+    Funciona tanto para o filme pesquisado quanto para os recomendados —
+    qualquer filme aberto na página de detalhes pode ser avaliado.
+    Após salvar, retorna para a página do filme mantendo o parâmetro ?origem.
+    """
     movie_id = request.form.get('movie_id')
     titulo   = request.form.get('titulo')
     nota     = float(request.form.get('nota', 0))
     user_id  = session['user_id']
+    origem   = request.form.get('origem', '')
 
+    # Validação no backend (além da validação HTML)
     if not movie_id or not titulo or nota < 0.5:
         return redirect(url_for('home'))
 
@@ -200,18 +374,24 @@ def avaliar():
     db.commit()
     db.close()
 
-    return redirect(url_for('detalhes', nome_filme=titulo))
+    # Preserva o parâmetro origem para o botão Voltar continuar funcionando
+    url = url_for('detalhes', nome_filme=titulo)
+    if origem:
+        url += f'?origem={origem}'
+    return redirect(url)
 
 
-# ── COMENTAR ─────────────────────────────────────────────────────────────────
+# ── ROTA: COMENTAR ────────────────────────────────────────────────────────────
 
 @app.route('/comentar', methods=['POST'])
 @login_required
 def comentar():
     """
-    MUDANÇA: a nota do comentário é herdada automaticamente da avaliação
-    privada do usuário (tabela avaliacoes). Se não avaliou, publica sem nota.
-    O formulário de comentário não tem mais campo de estrelas.
+    Publica um comentário público no feed da comunidade.
+    A nota é herdada automaticamente da avaliação privada do usuário
+    para esse filme — sem campo de estrelas no formulário.
+    Se o usuário não avaliou, o comentário é publicado sem nota.
+    Validação de comprimento feita no backend (3 a 500 caracteres).
     """
     movie_id   = request.form.get('movie_id')
     titulo     = request.form.get('titulo')
@@ -221,7 +401,7 @@ def comentar():
     if not comentario or len(comentario) < 3 or len(comentario) > 500:
         return redirect(url_for('detalhes', nome_filme=titulo))
 
-    # Busca a avaliação privada do usuário para herdar a nota
+    # Herda a nota da avaliação privada já salva
     db = get_db()
     row = db.execute(
         'SELECT nota FROM avaliacoes WHERE user_id = ? AND movie_id = ?',
@@ -239,11 +419,16 @@ def comentar():
     return redirect(url_for('detalhes', nome_filme=titulo))
 
 
-# ── EXCLUIR COMENTÁRIO ────────────────────────────────────────────────────────
+# ── ROTA: EXCLUIR COMENTÁRIO ──────────────────────────────────────────────────
 
 @app.route('/excluir_comentario/<int:comentario_id>', methods=['POST'])
 @login_required
 def excluir_comentario(comentario_id):
+    """
+    Exclui um comentário próprio.
+    Verifica a autoria antes de deletar — um usuário não pode excluir
+    o comentário de outro usuário mesmo conhecendo o ID.
+    """
     user_id = session['user_id']
     db = get_db()
 
@@ -260,38 +445,21 @@ def excluir_comentario(comentario_id):
         titulo = ''
 
     db.close()
-    return redirect(url_for('detalhes', nome_filme=titulo) if titulo else url_for('feed'))
-
-
-# ── FEED ──────────────────────────────────────────────────────────────────────
-
-@app.route('/feed')
-@login_required
-def feed():
-    db = get_db()
-    posts = db.execute("""
-        SELECT c.id, c.comentario, c.nota, c.titulo, c.movie_id, c.data,
-               u.nome AS autor, u.id AS autor_id
-        FROM comentarios c
-        JOIN users u ON c.user_id = u.id
-        ORDER BY c.data DESC
-        LIMIT 100
-    """).fetchall()
-    db.close()
-
-    return render_template(
-        'feed.html',
-        posts     = posts,
-        user_nome = session.get('user_nome', ''),
-        user_id   = session['user_id']
+    return redirect(
+        url_for('detalhes', nome_filme=titulo) if titulo else url_for('principal')
     )
 
 
-# ── PERFIL ────────────────────────────────────────────────────────────────────
+# ── ROTA: PERFIL DO USUÁRIO LOGADO ───────────────────────────────────────────
 
 @app.route('/perfil')
 @login_required
 def perfil():
+    """
+    Exibe o perfil do usuário logado com duas seções:
+      - Avaliações privadas: notas salvas que alimentam o XAI
+      - Publicações: comentários visíveis no feed da comunidade
+    """
     user_id = session['user_id']
     db = get_db()
 
@@ -320,11 +488,15 @@ def perfil():
     )
 
 
-# ── PERFIL PÚBLICO ────────────────────────────────────────────────────────────
+# ── ROTA: PERFIL PÚBLICO DE OUTRO USUÁRIO ────────────────────────────────────
 
 @app.route('/usuario/<int:uid>')
 @login_required
 def usuario_publico(uid):
+    """
+    Exibe o perfil público de qualquer usuário do VILU:
+    nome, data de cadastro e todos os comentários que publicou no feed.
+    """
     db = get_db()
     usuario = db.execute(
         'SELECT id, nome, criado_em FROM users WHERE id = ?', (uid,)

@@ -470,3 +470,93 @@ a:hover { text-decoration: underline; }
 textarea:focus {
   border-color: var(--accent) !important;
 }
+
+/* ── NAVBAR: separador e nome do usuário ────────────────────────────────────── */
+/* Divide visualmente os links de navegação do nome do usuário logado */
+.navbar-divider {
+  color: var(--border);
+  font-size: 1rem;
+  user-select: none;
+}
+.navbar-user {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+  cursor: default;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 0.2rem 0.75rem;
+}
+.nav-sair {
+  font-size: 0.85rem;
+  color: var(--text-muted) !important;
+}
+
+/* ── AUTOCOMPLETE ───────────────────────────────────────────────────────────── */
+/* Lista de sugestões que aparece abaixo do campo de busca */
+.autocomplete-list {
+  position: absolute;
+  top: calc(100% + 4px);   /* logo abaixo do input */
+  left: 0;
+  right: 70px;             /* não sobrepõe o botão Buscar */
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  list-style: none;
+  z-index: 200;
+  display: none;            /* começa oculto — JS exibe quando há sugestões */
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.autocomplete-list li {
+  padding: 0.65rem 1rem;
+  font-size: 0.92rem;
+  color: var(--text);
+  cursor: pointer;
+  border-bottom: 0.5px solid var(--border);
+  transition: background .12s;
+}
+.autocomplete-list li:last-child { border-bottom: none; }
+.autocomplete-list li:hover { background: var(--surface); }
+
+/* ── BANNER DO FILME nos comentários do feed ────────────────────────────────── */
+/* Card clicável que mostra o título do filme em cada post da comunidade */
+.post-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 0.75rem;
+  text-decoration: none;
+  transition: border-color .15s;
+}
+.post-banner:hover { border-color: var(--accent); text-decoration: none; }
+.post-banner-icon  { font-size: 1.1rem; }
+.post-banner-poster {
+  width: 42px;
+  height: 62px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.post-banner-titulo {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+  flex: 1;
+}
+.post-banner-link {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Item destacado na navegação por teclado no autocomplete */
+.autocomplete-list li.ativo {
+  background: var(--surface);
+  color: var(--accent);
+}

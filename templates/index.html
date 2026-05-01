@@ -1,39 +1,36 @@
 {% extends "base.html" %}
-{% block title %}VILU — Buscar Filmes{% endblock %}
+{% block title %}Buscar Filmes — VILU{% endblock %}
 
 {% block content %}
 <div class="page">
 
-  <!-- Hero de busca -->
   <div class="search-hero">
     <h1>Encontre seu próximo filme</h1>
     <p>Digite um título e o VILU recomenda com explicação do porquê</p>
 
-    <form method="POST">
-      <div class="search-row">
+    <form method="POST" id="form-busca" autocomplete="off">
+      <div class="search-row" style="position:relative">
         <input
           type="text"
+          id="input-busca"
           name="nome_filme"
           placeholder="Ex: Inception, Matrix, Toy Story..."
           value="{{ filme_escolhido }}"
           required
-          autofocus
         >
+        <ul id="sugestoes" class="autocomplete-list"></ul>
         <button type="submit" class="btn btn-primary">Buscar</button>
       </div>
     </form>
   </div>
 
-  <!-- Erro de busca -->
   {% if erro %}
     <div class="alert alert-error">{{ erro }}</div>
   {% endif %}
 
-  <!-- Resultado -->
   {% if filme_escolhido %}
-    <div class="card">
+    <div class="card" id="resultado-busca">
 
-      <!-- Cabeçalho: pôster + título + badge de modo + explicação XAI -->
       <div class="result-header">
         {% if poster_principal %}
           <img src="{{ poster_principal }}" class="result-poster" alt="Pôster de {{ filme_escolhido }}">
@@ -45,12 +42,11 @@
           <h2>{{ filme_escolhido }}</h2>
 
           {% if modo == 'colaborativo' %}
-            <span class="badge badge-colab">Filtragem Colaborativa</span>
+            <span class="badge badge-colab">Filtragem Colaborativa + Gênero</span>
           {% else %}
             <span class="badge badge-content">Filtragem por Conteúdo</span>
           {% endif %}
 
-          <!-- Caixa de explicação XAI -->
           <div class="xai-box">
             <strong>Por que essas recomendações?</strong><br>
             {{ explicacao }}
@@ -58,11 +54,14 @@
         </div>
       </div>
 
-      <!-- Lista de recomendações clicáveis -->
-      <h3 style="font-size:1rem; margin-bottom:0.75rem; color:var(--text-muted)">Sugestões para você</h3>
+      <h3 style="font-size:1rem;margin-bottom:0.75rem;color:var(--text-muted)">
+        Sugestões para você
+      </h3>
+
       <ul class="rec-list">
         {% for item in lista_recomendacoes %}
-          <a href="{{ url_for('detalhes', nome_filme=item.titulo) }}" class="rec-item">
+          <a href="{{ url_for('detalhes', nome_filme=item.titulo) }}?origem=busca"
+             class="rec-item">
             <span class="rec-title">{{ item.titulo }}</span>
             <span class="rec-conf {% if item.confianca == 'Por Gênero' %}genero{% endif %}">
               {{ item.confianca }}
@@ -72,8 +71,8 @@
       </ul>
 
     </div>
+
   {% else %}
-    <!-- Estado inicial vazio -->
     <div class="empty-state">
       <div class="icon">🍿</div>
       <p>Digite um filme acima para começar</p>
@@ -81,4 +80,108 @@
   {% endif %}
 
 </div>
+
+<script>
+// ── AUTOCOMPLETE ──────────────────────────────────────────────────────────────
+//
+// CORREÇÃO DO BUG: o problema anterior era que o evento 'click' no document
+// fechava a lista ANTES do onclick do <li> disparar — a sugestão sumia
+// sem submeter o formulário.
+//
+// Solução: usar 'mousedown' (que dispara ANTES do blur/click do document)
+// para marcar qual item foi selecionado, e 'click' apenas para fechar
+// a lista quando se clica FORA dela.
+//
+// Além disso, títulos com apóstrofo (ex: "Schindler's List") quebravam
+// o onclick inline. Solução: usar addEventListener em vez de onclick inline,
+// armazenando o título como atributo data-titulo — elimina o problema de
+// escape de caracteres especiais.
+
+const input     = document.getElementById('input-busca');
+const sugestoes = document.getElementById('sugestoes');
+let   timer     = null;
+let   ignorarFechamento = false; // flag que evita fechar antes de selecionar
+
+input.addEventListener('input', () => {
+  clearTimeout(timer);
+  const q = input.value.trim();
+
+  if (q.length < 2) {
+    fecharSugestoes();
+    return;
+  }
+
+  // Debounce de 250ms — evita chamar a cada tecla
+  timer = setTimeout(async () => {
+    try {
+      const resp  = await fetch(`/buscar_filmes?q=${encodeURIComponent(q)}`);
+      const lista = await resp.json();
+
+      if (!lista.length) { fecharSugestoes(); return; }
+
+      // Cria os <li> via DOM em vez de innerHTML — elimina XSS e
+      // problemas com apóstrofos ou qualquer caractere especial no título
+      sugestoes.innerHTML = '';
+      lista.forEach(titulo => {
+        const li = document.createElement('li');
+        li.textContent = titulo;           // textContent escapa tudo automaticamente
+        li.dataset.titulo = titulo;        // guarda o título original sem alteração
+
+        // mousedown dispara ANTES do blur — garante que a seleção acontece
+        // mesmo que o campo perca o foco ao clicar na lista
+        li.addEventListener('mousedown', (e) => {
+          e.preventDefault();              // impede o blur do input
+          ignorarFechamento = true;        // sinaliza para não fechar a lista ainda
+          escolher(titulo);
+        });
+
+        sugestoes.appendChild(li);
+      });
+
+      sugestoes.style.display = 'block';
+    } catch (err) {
+      console.error('Erro no autocomplete:', err);
+    }
+  }, 250);
+});
+
+function escolher(titulo) {
+  input.value = titulo;
+  fecharSugestoes();
+  document.getElementById('form-busca').submit();
+}
+
+function fecharSugestoes() {
+  sugestoes.innerHTML = '';
+  sugestoes.style.display = 'none';
+  ignorarFechamento = false;
+}
+
+// Fecha a lista ao clicar fora — mas só se não estiver no meio de uma seleção
+document.addEventListener('click', (e) => {
+  if (ignorarFechamento) { ignorarFechamento = false; return; }
+  if (!e.target.closest('.search-row')) fecharSugestoes();
+});
+
+// Navegação por teclado: setas e Enter
+input.addEventListener('keydown', (e) => {
+  const itens = sugestoes.querySelectorAll('li');
+  const ativo = sugestoes.querySelector('li.ativo');
+  let idx = Array.from(itens).indexOf(ativo);
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (ativo) ativo.classList.remove('ativo');
+    const prox = itens[Math.min(idx + 1, itens.length - 1)];
+    if (prox) { prox.classList.add('ativo'); input.value = prox.dataset.titulo; }
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (ativo) ativo.classList.remove('ativo');
+    const ant = itens[Math.max(idx - 1, 0)];
+    if (ant) { ant.classList.add('ativo'); input.value = ant.dataset.titulo; }
+  } else if (e.key === 'Escape') {
+    fecharSugestoes();
+  }
+});
+</script>
 {% endblock %}
