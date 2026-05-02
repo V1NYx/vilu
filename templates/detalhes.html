@@ -10,17 +10,12 @@
       para voltar ao resultado anterior sem recarregar a página.
     - Senão, volta para a Principal.
   -->
-  {% if request.args.get('origem') == 'busca' %}
-    <a href="#" onclick="history.back(); return false;"
-       class="btn btn-outline btn-sm" style="margin-bottom:1.5rem">
-      ← Voltar à busca
-    </a>
-  {% else %}
-    <a href="{{ url_for('principal') }}"
-       class="btn btn-outline btn-sm" style="margin-bottom:1.5rem">
-      ← Principal
-    </a>
-  {% endif %}
+  <!-- history.back() retorna sempre para a página anterior corretamente,
+       seja busca, principal ou perfil de outro usuário -->
+  <a href="#" onclick="history.back(); return false;"
+     class="btn btn-outline btn-sm" style="margin-bottom:1.5rem">
+    ← Voltar
+  </a>
 
   <!-- INFORMAÇÕES DO FILME -->
   <div class="card">
@@ -33,7 +28,17 @@
       {% endif %}
 
       <div class="detail-info">
-        <h1>{{ titulo }}</h1>
+        <h1>
+          {% if titulo_ptbr and titulo_ptbr != titulo %}
+            {{ titulo_ptbr }}
+            <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;
+                         display:block;margin-top:2px">
+              {{ titulo }}
+            </span>
+          {% else %}
+            {{ titulo }}
+          {% endif %}
+        </h1>
 
         <div class="generos-row">
           {% for g in generos %}

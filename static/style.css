@@ -200,14 +200,21 @@ a:hover { text-decoration: underline; }
   border-radius: 10px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
   transition: border-color .2s, background .2s;
   text-decoration: none;
   color: var(--text);
+  overflow: hidden;
 }
 .rec-item:hover { border-color: var(--accent); background: var(--card); text-decoration: none; }
-.rec-title { font-weight: 500; font-size: 0.95rem; }
+.rec-title {
+  font-weight: 500;
+  font-size: 0.95rem;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
 .rec-conf {
   font-size: 0.82rem;
   color: var(--green);
@@ -559,4 +566,281 @@ textarea:focus {
 .autocomplete-list li.ativo {
   background: var(--surface);
   color: var(--accent);
+}
+
+/* ── CARROSSEL DE RECOMENDAÇÕES ─────────────────────────────────────────────── */
+.carrossel-secao { margin-bottom: 2rem; }
+
+.carrossel-genero-titulo {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.carrossel-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.carrossel {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  padding: 4px 2px 10px;
+  flex: 1;
+  /* Esconde a scrollbar mas mantém o scroll funcional */
+  scrollbar-width: none;
+}
+.carrossel::-webkit-scrollbar { display: none; }
+
+.carrossel-item {
+  flex-shrink: 0;
+  width: 130px;
+  text-decoration: none;
+  color: var(--text);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border);
+  transition: border-color .2s, transform .15s;
+}
+.carrossel-item:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  text-decoration: none;
+}
+
+.carrossel-poster {
+  width: 130px;
+  height: 195px;
+  object-fit: cover;
+  display: block;
+}
+.carrossel-poster-placeholder {
+  width: 130px;
+  height: 195px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  background: var(--surface);
+}
+
+.carrossel-info {
+  padding: 8px 8px 10px;
+}
+.carrossel-titulo {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  margin-bottom: 5px;
+}
+.carrossel-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.tag-mini {
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+
+/* Botões do carrossel */
+.carrossel-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: all .15s;
+  line-height: 1;
+}
+.carrossel-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── BANNER POST: corrigir layout com poster ────────────────────────────────── */
+.post-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  text-decoration: none;
+  transition: border-color .2s;
+}
+.post-banner:hover { border-color: var(--accent); text-decoration: none; }
+.post-banner-poster {
+  width: 38px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.post-banner-icon  { font-size: 1.4rem; flex-shrink: 0; }
+.post-banner-titulo {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text);
+  flex: 1;
+  line-height: 1.4;
+}
+/* Remove o link "Ver detalhes →" que foi excluído do template */
+.post-banner-link { display: none; }
+
+/* ── GRADE DE FILMES POPULARES (página de busca, estado inicial) ──────────── */
+.destaque-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 14px;
+  margin-bottom: 2rem;
+}
+
+.destaque-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  transition: border-color .2s, transform .2s;
+  cursor: pointer;
+}
+.destaque-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-3px);
+  text-decoration: none;
+}
+
+.destaque-poster {
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  display: block;
+}
+.destaque-placeholder {
+  aspect-ratio: 2/3;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+}
+
+.destaque-info {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.destaque-titulo {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+  /* Limita a 2 linhas com reticências */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.destaque-generos {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+@media (max-width: 500px) {
+  .destaque-grid {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 10px;
+  }
+}
+
+/* ── PÔSTER MINIATURA NA LISTA DE RECOMENDAÇÕES ─────────────────────────── */
+.rec-item-poster {
+  width: 64px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.rec-item-poster-placeholder {
+  width: 64px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  background: var(--card);
+  border-radius: 6px;
+}
+
+/* Título original (inglês) exibido abaixo do título PT-BR */
+.rec-titulo-original {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-top: 1px;
+}
+
+/* ── PERFIL — lista compacta de comentários ──────────────────────────────── */
+.perfil-comentario-item {
+  padding: 1rem 1.25rem;
+}
+.perfil-comentario-borda {
+  border-bottom: 1px solid var(--border);
+}
+.perfil-comentario-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+  flex-wrap: wrap;
+}
+.perfil-comentario-titulo {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  transition: color .2s;
+}
+.perfil-comentario-titulo:hover { color: var(--accent); }
+.perfil-comentario-data {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.perfil-comentario-texto {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
 }

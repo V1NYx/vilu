@@ -1,48 +1,37 @@
-"""
-sistema_xai.py
-Motor de recomendação híbrido com camada de Explicabilidade (XAI).
-
-Algoritmos usados:
-  1. Filtragem Colaborativa  → Correlação de Pearson entre vetores de notas
-                               + reranking por sobreposição de gêneros
-  2. Filtragem por Conteúdo  → Interseção de gêneros (fallback Cold Start)
-  3. XAI Personalizado       → Histórico filtrado por gênero relevante
-
-Mudanças desta versão:
-  - Colaborativo agora re-ranqueia o top-20 de Pearson priorizando gêneros
-    compartilhados com o filme buscado (Matrix não sugere Toy Story)
-  - Filtragem por conteúdo usa interseção de gêneros em vez de igualdade exata
-  - XAI só cita filmes do histórico que compartilham ao menos 1 gênero com
-    o filme buscado (evita citar Toy Story ao buscar The Dark Knight)
-  - Feed simplificado: comentário herda a avaliação já salva pelo usuário
-"""
+# sistema_xai.py — Motor de recomendação híbrido com Explicabilidade (XAI)
+#
+# Algoritmos implementados:
+#   1. Colaborativo → Correlação de Pearson + reranking por Jaccard de gêneros
+#   2. Conteúdo     → Interseção de gêneros ranqueada por Jaccard (Cold Start)
+#
+# XAI: explicações personalizadas que citam apenas filmes do histórico do
+# usuário com mínimo de 2 gêneros em comum com o filme buscado.
 
 import pandas as pd
 from database import get_db
 
 
-# ── CARREGAMENTO DOS DADOS ────────────────────────────────────────────────────
+# ── DADOS ─────────────────────────────────────────────────────────────────────
+# Carregados uma única vez ao importar o módulo.
+# O Flask reutiliza o processo — os CSVs não são relidos a cada requisição.
 
 print("Carregando datasets MovieLens...")
 
-filmes = pd.read_csv('dataset/movies.csv')
-notas  = pd.read_csv('dataset/ratings.csv')
-
+filmes          = pd.read_csv('dataset/movies.csv')
+notas           = pd.read_csv('dataset/ratings.csv')
 dados_completos = pd.merge(notas, filmes, on='movieId')
 
-contagem_votos = dados_completos.groupby('title')['rating'].count()
-
+# Conta avaliações por filme para filtrar ruído estatístico
+contagem_votos       = dados_completos.groupby('title')['rating'].count()
 filmes_populares_idx = contagem_votos[contagem_votos > 50].index
-dados_filtrados = dados_completos[
-    dados_completos['title'].isin(filmes_populares_idx)
-]
+dados_filtrados      = dados_completos[dados_completos['title'].isin(filmes_populares_idx)]
 
+# Matriz Usuário × Filme: valores = notas, NaN = não assistiu
 matriz_filmes = dados_filtrados.pivot_table(
     index='userId', columns='title', values='rating'
 )
 
-# Índice rápido: título → set de gêneros (usado no reranking e XAI)
-# Ex: 'The Matrix (1999)' → {'Action', 'Sci-Fi', 'Thriller'}
+# Índice título → set de gêneros para consultas rápidas sem split repetido
 _generos_idx = {
     row['title']: set(row['genres'].split('|'))
     for _, row in filmes.iterrows()
@@ -51,20 +40,13 @@ _generos_idx = {
 print(f"Pronto! {len(filmes)} filmes | {len(notas)} avaliações carregadas.")
 
 
-# ── HELPERS DE GÊNERO ─────────────────────────────────────────────────────────
-
+# ── HELPERS ───────────────────────────────────────────────────────────────────
 
 def _sobreposicao(titulo_a, titulo_b):
     """
-    Calcula a sobreposição de gêneros entre dois filmes (índice Jaccard).
-    Retorna valor entre 0.0 (nenhum gênero em comum) e 1.0 (idênticos).
-
-    Jaccard = |A ∩ B| / |A ∪ B|
-
-    Exemplos:
-      Matrix (Action|Sci-Fi) vs Matrix Reloaded (Action|Sci-Fi) → 1.0
-      Matrix (Action|Sci-Fi) vs Star Trek (Action|Adventure|Sci-Fi) → 0.67
-      Matrix (Action|Sci-Fi) vs Toy Story (Animation|Comedy) → 0.0
+    Índice de Jaccard entre os gêneros de dois filmes.
+    Retorna: 0.0 (nenhum gênero em comum) a 1.0 (conjuntos idênticos).
+    Fórmula: |A ∩ B| / |A ∪ B|
     """
     gen_a = _generos_idx.get(titulo_a, set())
     gen_b = _generos_idx.get(titulo_b, set())
@@ -73,91 +55,85 @@ def _sobreposicao(titulo_a, titulo_b):
     return len(gen_a & gen_b) / len(gen_a | gen_b)
 
 
-# ── HISTÓRICO DO USUÁRIO LOGADO ───────────────────────────────────────────────
+def _historico_relevante(historico, titulo_busca, max_itens=2, min_generos=2):
+    """
+    Filtra o histórico do usuário mantendo apenas filmes com pelo menos
+    `min_generos` gêneros em comum com o filme buscado.
+
+    Padrão min_generos=2: evita citações sem relação temática real.
+    Ex: Toy Story (Animation|Comedy) vs Matrix (Action|Sci-Fi) → 0 em comum → não citado.
+    """
+    gen_busca = _generos_idx.get(titulo_busca, set())
+    if not gen_busca:
+        return []
+    return [
+        h for h in historico
+        if len(_generos_idx.get(h['titulo'], set()) & gen_busca) >= min_generos
+    ][:max_itens]
+
+
+def _priorizar_sequencias(titulo_busca, recomendacoes):
+    """
+    Move sequências e filmes da mesma franquia para o topo da lista.
+    Extrai o título base (sem ano e sem número final) e verifica
+    quais candidatos o contêm.
+    Ex: 'Toy Story (1995)' → base 'Toy Story' → Toy Story 2 e 3 sobem.
+    """
+    import re as _re
+
+    base = _re.sub(r'\s*\(\d{4}\)', '', titulo_busca).strip()
+    base = _re.sub(r'[\s,]+\d+$', '', base).strip()
+    base = _re.sub(r'\s+(I{1,3}|IV|V|VI{0,3}|IX|X)$', '', base, flags=_re.IGNORECASE).strip()
+
+    if len(base) < 3:
+        return recomendacoes
+
+    sequencias, outros = [], []
+    for rec in recomendacoes:
+        candidato = _re.sub(r'\s*\(\d{4}\)', '', rec['titulo'])
+        if base.lower() in candidato.lower():
+            sequencias.append(rec)
+        else:
+            outros.append(rec)
+
+    return sequencias + outros
+
 
 def buscar_historico_usuario(user_id):
-    """
-    Busca no banco SQLite as avaliações do usuário logado,
-    filtrando apenas notas >= 4.0 (filmes que ele gostou).
-    Retorna lista de dicionários: [{'titulo': '...', 'nota': 4.5}, ...]
-    """
+    """Retorna os filmes avaliados com nota >= 4.0 pelo usuário logado."""
     if not user_id:
         return []
-
-    db = get_db()
+    db   = get_db()
     rows = db.execute("""
-        SELECT titulo, nota
-        FROM avaliacoes
+        SELECT titulo, nota FROM avaliacoes
         WHERE user_id = ? AND nota >= 4.0
         ORDER BY nota DESC, data DESC
         LIMIT 10
     """, (user_id,)).fetchall()
     db.close()
-
     return [dict(r) for r in rows]
 
 
-def _historico_relevante(historico, titulo_busca, max_itens=2):
+# ── ALGORITMO 1: FILTRAGEM COLABORATIVA ──────────────────────────────────────
+
+def recomendar_colaborativo(titulo_completo, user_id=None, user_nome=None):
     """
-    NOVO: Filtra o histórico do usuário mantendo apenas filmes que
-    compartilham pelo menos 1 gênero com o filme buscado.
-
-    Problema anterior: usuário gostou de Toy Story e Shrek (animação).
-    Ao buscar Matrix (ação/ficção), o XAI citava Toy Story como reforço
-    — o que não faz sentido temático.
-
-    Agora: só cita filmes do histórico com gênero relevante para a busca.
-    Se nenhum histórico for relevante, retorna lista vazia (XAI não cita).
+    Fase 1 — Pearson: calcula corrwith() e seleciona os 30 mais correlacionados.
+    Fase 2 — Reranking: score = (0.6 × Pearson) + (0.4 × Jaccard de gêneros).
+                        Garante que Matrix não sugira Toy Story.
+    Fase 3 — XAI: explicação personalizada com histórico do usuário.
     """
-    gen_busca = _generos_idx.get(titulo_busca, set())
-    if not gen_busca:
-        return []
-
-    relevantes = [
-        h for h in historico
-        if _generos_idx.get(h['titulo'], set()) & gen_busca
-        # interseção não vazia = pelo menos 1 gênero em comum
-    ]
-
-    return relevantes[:max_itens]
-
-
-# ── ALGORITMO 1: FILTRAGEM COLABORATIVA COM RERANKING POR GÊNERO ─────────────
-
-def recomendar_colaborativo(titulo_completo, user_id=None):
-    """
-    Fase 1 — Pearson:
-      Calcula corrwith() e pega o top-20 mais correlacionados.
-      Usar top-20 em vez de top-5 dá margem para o reranking filtrar.
-
-    Fase 2 — Reranking por gênero (NOVO):
-      Para cada candidato do top-20, calcula um score combinado:
-        score = (peso_pearson * correlacao) + (peso_genero * jaccard)
-
-      peso_pearson = 0.6  → Pearson ainda domina (comportamento coletivo)
-      peso_genero  = 0.4  → gênero penaliza filmes muito díspares
-
-      Isso faz Matrix Reloaded (Action|Sci-Fi, Pearson 0.82) superar
-      Toy Story (Animation|Comedy, Pearson 0.75) mesmo com correlação menor.
-
-    Fase 3 — XAI:
-      Cita apenas filmes do histórico com gênero relevante ao filme buscado.
-    """
-    PESO_PEARSON = 0.6
-    PESO_GENERO  = 0.4
-    TOP_CANDIDATOS = 20   # pega mais candidatos para o reranking escolher
+    PESO_PEARSON   = 0.6
+    PESO_GENERO    = 0.4
+    TOP_CANDIDATOS = 30
 
     notas_filme = matriz_filmes[titulo_completo]
     similares   = matriz_filmes.corrwith(notas_filme)
 
-    corr_df = pd.DataFrame(similares, columns=['Correlacao']).dropna()
-    corr_df = corr_df.sort_values(by='Correlacao', ascending=False)
+    corr_df    = pd.DataFrame(similares, columns=['Correlacao']).dropna()
+    corr_df    = corr_df.sort_values('Correlacao', ascending=False)
+    candidatos = corr_df.iloc[1: TOP_CANDIDATOS + 1].copy()  # exclui o próprio filme
 
-    # Top-20 candidatos (excluindo o próprio filme no índice 0)
-    candidatos = corr_df.iloc[1: TOP_CANDIDATOS + 1]
-
-    # ── Reranking: adiciona coluna de score combinado ──
-    candidatos = candidatos.copy()
     candidatos['Jaccard'] = candidatos.index.map(
         lambda t: _sobreposicao(titulo_completo, t)
     )
@@ -166,115 +142,96 @@ def recomendar_colaborativo(titulo_completo, user_id=None):
         PESO_GENERO  * candidatos['Jaccard']
     )
 
-    # Reordena pelo score combinado e pega os 5 melhores
-    top_5 = candidatos.sort_values('Score', ascending=False).head(5)
+    top_8 = candidatos.sort_values('Score', ascending=False).head(8)
 
     recomendacoes = [
-        {
-            'titulo':    row.name,
-            'confianca': f"{row['Correlacao'] * 100:.1f}%",
-            'jaccard':   f"{row['Jaccard']:.2f}",
-            'modo':      'colaborativo'
-        }
-        for _, row in top_5.iterrows()
+        {'titulo': row.name, 'modo': 'colaborativo'}
+        for _, row in top_8.iterrows()
     ]
+    recomendacoes = _priorizar_sequencias(titulo_completo, recomendacoes)
 
-    # ── XAI ──
+    # XAI
     historico  = buscar_historico_usuario(user_id)
     relevantes = _historico_relevante(historico, titulo_completo)
+    prefixo    = f"{user_nome}, " if user_nome else ""
 
     explicacao = (
-        f"'{titulo_completo}' é popular em nossa base. "
+        f"{prefixo}'{titulo_completo}' é popular em nossa base. "
         f"Analisei o padrão de avaliações de outros usuários "
         f"e priorizei filmes de gêneros similares nas sugestões abaixo."
     )
-
     if relevantes:
-        nomes = ' e '.join([h['titulo'] for h in relevantes])
-        gen_comuns = _generos_idx.get(titulo_completo, set()) & \
-                     _generos_idx.get(relevantes[0]['titulo'], set())
-        gen_str = ', '.join(sorted(gen_comuns)) if gen_comuns else 'similares'
+        nomes      = ' e '.join([h['titulo'] for h in relevantes])
+        gen_comuns = (_generos_idx.get(titulo_completo, set()) &
+                      _generos_idx.get(relevantes[0]['titulo'], set()))
+        gen_str    = ', '.join(sorted(gen_comuns)) if gen_comuns else 'similares'
         explicacao += (
             f" Você também gostou de {nomes} — filmes de {gen_str} — "
-            f"o que reforça esse perfil de preferências."
+            f"o que reforça esse perfil."
         )
 
     return recomendacoes, explicacao
 
 
-# ── ALGORITMO 2: FILTRAGEM POR CONTEÚDO — INTERSEÇÃO DE GÊNEROS ──────────────
+# ── ALGORITMO 2: FILTRAGEM POR CONTEÚDO (Cold Start) ─────────────────────────
 
-def recomendar_conteudo(titulo_completo, dados_filme, user_id=None):
+def recomendar_conteudo(titulo_completo, dados_filme, user_id=None, user_nome=None):
     """
-    MELHORADO: usa interseção de gêneros em vez de igualdade exata.
-
-    Problema anterior: 'Adventure|Comedy' == 'Adventure|Comedy' apenas.
-    'Comedy' ou 'Comedy|Adventure' não eram encontrados.
-
-    Agora: qualquer filme com pelo menos 1 gênero em comum é candidato.
-    Os candidatos são ranqueados pelo índice de Jaccard (mais sobreposição = melhor).
+    Usado quando o filme tem menos de 50 avaliações (Cold Start).
+    Busca filmes com ao menos 1 gênero em comum, ranqueados por Jaccard.
     """
     generos_busca = set(dados_filme['genres'].split('|'))
 
-    # Filtra filmes com ao menos 1 gênero em comum
-    def tem_genero_comum(row_genres):
-        return bool(set(row_genres.split('|')) & generos_busca)
-
-    rec = filmes[filmes['genres'].apply(tem_genero_comum)]
+    rec = filmes[filmes['genres'].apply(
+        lambda g: bool(set(g.split('|')) & generos_busca)
+    )]
     rec = rec[rec['title'] != titulo_completo].copy()
 
     if rec.empty:
-        # Fallback final: pega filmes aleatórios se não achar nada
-        rec = filmes[filmes['title'] != titulo_completo].sample(
-            min(5, len(filmes) - 1)
-        )
+        rec = filmes[filmes['title'] != titulo_completo].sample(min(8, len(filmes) - 1))
     else:
-        # Ranqueia por Jaccard decrescente
         rec['jaccard'] = rec['genres'].apply(
             lambda g: len(set(g.split('|')) & generos_busca) /
                       len(set(g.split('|')) | generos_busca)
         )
-        rec = rec.sort_values('jaccard', ascending=False).head(5)
+        rec = rec.sort_values('jaccard', ascending=False).head(8)
 
     recomendacoes = [
-        {
-            'titulo':    row['title'],
-            'confianca': 'Por Gênero',
-            'modo':      'conteudo'
-        }
+        {'titulo': row['title'], 'modo': 'conteudo'}
         for _, row in rec.iterrows()
     ]
+    recomendacoes = _priorizar_sequencias(titulo_completo, recomendacoes)
 
-    # ── XAI ──
-    historico  = buscar_historico_usuario(user_id)
-    relevantes = _historico_relevante(historico, titulo_completo)
+    # XAI
+    historico   = buscar_historico_usuario(user_id)
+    relevantes  = _historico_relevante(historico, titulo_completo)
+    generos_str = ', '.join(sorted(generos_busca))
+    prefixo     = f"{user_nome}, " if user_nome else ""
 
-    generos_formatados = ', '.join(sorted(generos_busca))
     explicacao = (
-        f"'{titulo_completo}' tem poucos dados históricos na nossa base. "
-        f"Por isso, busquei filmes com gêneros em comum [{generos_formatados}], "
-        f"priorizando os com maior sobreposição de gêneros."
+        f"{prefixo}'{titulo_completo}' tem poucos dados históricos na nossa base. "
+        f"Por isso, busquei filmes com gêneros em comum [{generos_str}], "
+        f"priorizando os com maior sobreposição."
     )
-
     if relevantes:
         nomes = ', '.join([h['titulo'] for h in relevantes])
-        explicacao += (
-            f" Seu histórico ({nomes}) confirma interesse "
-            f"nesses gêneros."
-        )
+        explicacao += f" Seu histórico ({nomes}) confirma interesse nesses gêneros."
 
     return recomendacoes, explicacao
 
 
 # ── ORQUESTRADOR HÍBRIDO ──────────────────────────────────────────────────────
 
-def recomendar_hibrido(nome_entrada, user_id=None):
+def recomendar_hibrido(nome_entrada, user_id=None, user_nome=None):
     """
-    Decide qual algoritmo usar:
-      - Filme na matriz (> 50 votos) → Colaborativo + reranking por gênero
-      - Senão                        → Conteúdo com interseção de gêneros
+    Decide qual algoritmo usar e retorna a tupla:
+    (titulo, recomendacoes, explicacao, modo, erro)
+
+    Regra: filme com > 50 avaliações → Colaborativo; senão → Conteúdo.
     """
-    busca = filmes[filmes['title'].str.contains(nome_entrada, case=False, na=False)]
+    busca = filmes[
+        filmes['title'].str.contains(nome_entrada, case=False, na=False, regex=False)
+    ]
 
     if len(busca) == 0:
         return None, [], '', '', 'Filme não encontrado. Tente o nome em inglês.'
@@ -283,10 +240,10 @@ def recomendar_hibrido(nome_entrada, user_id=None):
     titulo_completo = dados_filme['title']
 
     if titulo_completo in matriz_filmes.columns:
-        recomendacoes, explicacao = recomendar_colaborativo(titulo_completo, user_id)
+        recs, exp = recomendar_colaborativo(titulo_completo, user_id, user_nome)
         modo = 'colaborativo'
     else:
-        recomendacoes, explicacao = recomendar_conteudo(titulo_completo, dados_filme, user_id)
+        recs, exp = recomendar_conteudo(titulo_completo, dados_filme, user_id, user_nome)
         modo = 'conteudo'
 
-    return titulo_completo, recomendacoes, explicacao, modo, ''
+    return titulo_completo, recs, exp, modo, ''

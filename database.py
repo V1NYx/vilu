@@ -1,53 +1,48 @@
+# database.py — Gerenciamento do banco de dados SQLite
+
 import sqlite3
 
-# Caminho do banco de dados — fica na mesma pasta do projeto
 DB_PATH = 'vilu.db'
 
 
 def get_db():
-    """Abre e retorna uma conexão com o banco de dados."""
+    """Abre e retorna uma conexão com o banco. Colunas acessadas por nome (row['campo'])."""
     conn = sqlite3.connect(DB_PATH)
-    # row_factory permite acessar colunas por nome: row['nome'] em vez de row[0]
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def criar_tabelas():
-    """
-    Cria todas as tabelas do banco se ainda não existirem.
-    Seguro rodar múltiplas vezes — IF NOT EXISTS protege os dados.
-    """
+    """Cria as tabelas do banco se não existirem. Seguro chamar múltiplas vezes."""
     conn = get_db()
 
-    # Tabela de usuários: cadastros com senha criptografada
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome      TEXT    NOT NULL,
-            email     TEXT    NOT NULL UNIQUE,
-            senha     TEXT    NOT NULL,
-            criado_em TEXT    DEFAULT CURRENT_TIMESTAMP
+            nome      TEXT NOT NULL,
+            email     TEXT NOT NULL UNIQUE,
+            senha     TEXT NOT NULL,
+            criado_em TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
-    # Avaliações privadas: alimentam o XAI e as recomendações personalizadas
-    # UNIQUE(user_id, movie_id): cada usuário avalia um filme apenas uma vez
-    # ON CONFLICT DO UPDATE no app.py atualiza a nota em vez de rejeitar
+    # UNIQUE(user_id, movie_id): cada usuário avalia cada filme apenas uma vez.
+    # A rota /avaliar usa ON CONFLICT DO UPDATE para atualizar notas existentes.
     conn.execute("""
         CREATE TABLE IF NOT EXISTS avaliacoes (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id   INTEGER NOT NULL,
-            movie_id  INTEGER NOT NULL,
-            titulo    TEXT    NOT NULL,
-            nota      REAL    NOT NULL CHECK(nota >= 0.5 AND nota <= 5.0),
-            data      TEXT    DEFAULT CURRENT_TIMESTAMP,
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id  INTEGER NOT NULL,
+            movie_id INTEGER NOT NULL,
+            titulo   TEXT    NOT NULL,
+            nota     REAL    NOT NULL CHECK(nota >= 0.5 AND nota <= 5.0),
+            data     TEXT    DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id),
             UNIQUE(user_id, movie_id)
         )
     """)
 
-    # Comentários públicos: aparecem no feed da comunidade (página Principal)
-    # Sem UNIQUE: o mesmo usuário pode comentar o mesmo filme mais de uma vez
+    # Comentários públicos exibidos no feed da comunidade.
+    # Sem UNIQUE: o mesmo usuário pode comentar o mesmo filme mais de uma vez.
     conn.execute("""
         CREATE TABLE IF NOT EXISTS comentarios (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,

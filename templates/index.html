@@ -4,6 +4,7 @@
 {% block content %}
 <div class="page">
 
+  <!-- ── BUSCA ────────────────────────────────────────────────────── -->
   <div class="search-hero">
     <h1>Encontre seu próximo filme</h1>
     <p>Digite um título e o VILU recomenda com explicação do porquê</p>
@@ -29,11 +30,12 @@
   {% endif %}
 
   {% if filme_escolhido %}
-    <div class="card" id="resultado-busca">
 
+    <!-- ── RESULTADO DO FILME PESQUISADO ────────────────────────────── -->
+    <div class="card" id="resultado-busca">
       <div class="result-header">
         {% if poster_principal %}
-          <img src="{{ poster_principal }}" class="result-poster" alt="Pôster de {{ filme_escolhido }}">
+          <img src="{{ poster_principal }}" class="result-poster" alt="{{ filme_escolhido }}">
         {% else %}
           <div class="result-poster-placeholder">🎬</div>
         {% endif %}
@@ -47,101 +49,163 @@
             <span class="badge badge-content">Filtragem por Conteúdo</span>
           {% endif %}
 
-          <div class="xai-box">
-            <strong>Por que essas recomendações?</strong><br>
-            {{ explicacao }}
-          </div>
+          <!-- ── AVALIAR O FILME PESQUISADO ─────────────────────────── -->
+          {% if movie_id_pesquisado %}
+            <div class="avaliar-form" style="margin-top:1rem">
+              {% if nota_filme_pesquisado %}
+                <div class="alert alert-info" style="margin-bottom:0.5rem">
+                  Sua avaliação: <strong>{{ nota_filme_pesquisado }} / 5.0</strong>
+                </div>
+              {% else %}
+                <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.5rem">
+                  Avalie este filme para personalizar suas recomendações
+                </p>
+              {% endif %}
+
+              <form method="POST" action="{{ url_for('avaliar') }}">
+                <input type="hidden" name="movie_id" value="{{ movie_id_pesquisado }}">
+                <input type="hidden" name="titulo"   value="{{ filme_escolhido }}">
+                <input type="hidden" name="nota"     id="nota-pesquisado" value="">
+                <div class="rating-row">
+                  {% for n in [1, 2, 3, 4, 5] %}
+                    <button type="button"
+                      class="star-btn {% if nota_filme_pesquisado and nota_filme_pesquisado|int == n %}selected{% endif %}"
+                      data-nota="{{ n }}"
+                      onclick="selecionarNotaPesquisado({{ n }})">
+                      {{ n }} ★
+                    </button>
+                  {% endfor %}
+                  <button type="submit" class="btn btn-primary btn-sm"
+                          id="btn-salvar-pesquisado" style="display:none">
+                    Salvar
+                  </button>
+                </div>
+              </form>
+            </div>
+          {% endif %}
+
         </div>
       </div>
+    </div>
 
-      <h3 style="font-size:1rem;margin-bottom:0.75rem;color:var(--text-muted)">
-        Sugestões para você
-      </h3>
+    <!-- ── XAI: por que essas recomendações ── -->
+    <div class="xai-box" style="margin-bottom:1rem">
+      <strong>Por que essas recomendações?</strong><br>
+      {{ explicacao }}
+    </div>
 
+    <!-- ── LISTA DE RECOMENDAÇÕES ──────────────────────────────────── -->
+    <h3 style="font-size:1rem;margin:0 0 0.75rem;color:var(--text-muted)">
+      Sugestões para você
+    </h3>
+
+    {% if lista_recomendacoes %}
       <ul class="rec-list">
         {% for item in lista_recomendacoes %}
           <a href="{{ url_for('detalhes', nome_filme=item.titulo) }}?origem=busca"
              class="rec-item">
-            <span class="rec-title">{{ item.titulo }}</span>
-            <span class="rec-conf {% if item.confianca == 'Por Gênero' %}genero{% endif %}">
-              {{ item.confianca }}
+            {% if item.poster %}
+              <img src="{{ item.poster }}" class="rec-item-poster" alt="{{ item.titulo }}">
+            {% else %}
+              <span class="rec-item-poster-placeholder">🎬</span>
+            {% endif %}
+            <span class="rec-title">
+              {{ item.titulo_ptbr if item.titulo_ptbr else item.titulo }}
+              {% if item.titulo_ptbr and item.titulo_ptbr != item.titulo %}
+                <span class="rec-titulo-original">{{ item.titulo }}</span>
+              {% endif %}
             </span>
           </a>
         {% endfor %}
       </ul>
-
-    </div>
+    {% else %}
+      <div class="empty-state" style="padding:2rem">
+        <p>Nenhuma sugestão encontrada.</p>
+      </div>
+    {% endif %}
 
   {% else %}
-    <div class="empty-state">
-      <div class="icon">🍿</div>
-      <p>Digite um filme acima para começar</p>
-    </div>
+
+    <!-- Grade de filmes populares — exibida antes de qualquer pesquisa -->
+    {% if filmes_destaque %}
+      <h3 style="font-size:1rem;margin:1.5rem 0 1rem;color:var(--text-muted)">
+        🔥 Populares no VILU
+      </h3>
+      <div class="destaque-grid">
+        {% for f in filmes_destaque %}
+          <!--
+            Ao clicar, preenche o campo de busca com o título do filme
+            e submete o formulário — gera as recomendações igual a uma busca manual.
+          -->
+          <div class="destaque-card"
+               onclick="buscarFilme('{{ f.titulo | replace("'", "\'") }}')">
+            {% if f.poster %}
+              <img src="{{ f.poster }}"
+                   alt="{{ f.titulo }}"
+                   class="destaque-poster">
+            {% else %}
+              <div class="destaque-poster destaque-placeholder">🎬</div>
+            {% endif %}
+            <div class="destaque-info">
+              <span class="destaque-titulo">{{ f.titulo_ptbr if f.titulo_ptbr else f.titulo }}</span>
+              <span class="destaque-generos">
+                {{ f.generos | join(' · ') }}
+              </span>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
   {% endif %}
 
 </div>
 
 <script>
-// ── AUTOCOMPLETE ──────────────────────────────────────────────────────────────
-//
-// CORREÇÃO DO BUG: o problema anterior era que o evento 'click' no document
-// fechava a lista ANTES do onclick do <li> disparar — a sugestão sumia
-// sem submeter o formulário.
-//
-// Solução: usar 'mousedown' (que dispara ANTES do blur/click do document)
-// para marcar qual item foi selecionado, e 'click' apenas para fechar
-// a lista quando se clica FORA dela.
-//
-// Além disso, títulos com apóstrofo (ex: "Schindler's List") quebravam
-// o onclick inline. Solução: usar addEventListener em vez de onclick inline,
-// armazenando o título como atributo data-titulo — elimina o problema de
-// escape de caracteres especiais.
+// ── AVALIAÇÃO DO FILME PESQUISADO ─────────────────────────────────────────────
+function selecionarNotaPesquisado(n) {
+  document.getElementById('nota-pesquisado').value = n;
+  document.querySelectorAll('.star-btn').forEach(btn => {
+    btn.classList.toggle('selected', parseInt(btn.dataset.nota) <= n);
+  });
+  document.getElementById('btn-salvar-pesquisado').style.display = 'inline-flex';
+}
 
+{% if nota_filme_pesquisado %}
+  selecionarNotaPesquisado({{ nota_filme_pesquisado|int }});
+{% endif %}
+
+// ── AUTOCOMPLETE ──────────────────────────────────────────────────────────────
 const input     = document.getElementById('input-busca');
 const sugestoes = document.getElementById('sugestoes');
 let   timer     = null;
-let   ignorarFechamento = false; // flag que evita fechar antes de selecionar
+let   ignorarFechamento = false;
 
 input.addEventListener('input', () => {
   clearTimeout(timer);
   const q = input.value.trim();
+  if (q.length < 2) { fecharSugestoes(); return; }
 
-  if (q.length < 2) {
-    fecharSugestoes();
-    return;
-  }
-
-  // Debounce de 250ms — evita chamar a cada tecla
   timer = setTimeout(async () => {
     try {
       const resp  = await fetch(`/buscar_filmes?q=${encodeURIComponent(q)}`);
       const lista = await resp.json();
-
       if (!lista.length) { fecharSugestoes(); return; }
 
-      // Cria os <li> via DOM em vez de innerHTML — elimina XSS e
-      // problemas com apóstrofos ou qualquer caractere especial no título
       sugestoes.innerHTML = '';
       lista.forEach(titulo => {
         const li = document.createElement('li');
-        li.textContent = titulo;           // textContent escapa tudo automaticamente
-        li.dataset.titulo = titulo;        // guarda o título original sem alteração
-
-        // mousedown dispara ANTES do blur — garante que a seleção acontece
-        // mesmo que o campo perca o foco ao clicar na lista
+        li.textContent    = titulo;
+        li.dataset.titulo = titulo;
         li.addEventListener('mousedown', (e) => {
-          e.preventDefault();              // impede o blur do input
-          ignorarFechamento = true;        // sinaliza para não fechar a lista ainda
+          e.preventDefault();
+          ignorarFechamento = true;
           escolher(titulo);
         });
-
         sugestoes.appendChild(li);
       });
-
       sugestoes.style.display = 'block';
-    } catch (err) {
-      console.error('Erro no autocomplete:', err);
-    }
+    } catch (err) { console.error('Autocomplete:', err); }
   }, 250);
 });
 
@@ -157,18 +221,22 @@ function fecharSugestoes() {
   ignorarFechamento = false;
 }
 
-// Fecha a lista ao clicar fora — mas só se não estiver no meio de uma seleção
 document.addEventListener('click', (e) => {
   if (ignorarFechamento) { ignorarFechamento = false; return; }
   if (!e.target.closest('.search-row')) fecharSugestoes();
 });
 
-// Navegação por teclado: setas e Enter
+// Chamado ao clicar em um filme da grade de populares:
+// preenche o campo e submete o formulário de busca
+function buscarFilme(titulo) {
+  input.value = titulo;
+  document.getElementById('form-busca').submit();
+}
+
 input.addEventListener('keydown', (e) => {
   const itens = sugestoes.querySelectorAll('li');
   const ativo = sugestoes.querySelector('li.ativo');
   let idx = Array.from(itens).indexOf(ativo);
-
   if (e.key === 'ArrowDown') {
     e.preventDefault();
     if (ativo) ativo.classList.remove('ativo');

@@ -52,23 +52,28 @@
   <h3 style="font-size:1rem;color:var(--text-muted);margin:1.5rem 0 0.75rem">📢 Suas publicações</h3>
 
   {% if comentarios %}
-    {% for c in comentarios %}
-      <div class="post-card">
-        <div class="post-header">
-          <span class="post-autor">Você</span>
-          {% if c.nota %}<span class="post-nota">{{ c.nota }} ★</span>{% endif %}
-          <span class="post-data">{{ c.data[:10] }}</span>
+    <!-- Bloco único com todos os comentários em formato de lista compacta -->
+    <div class="card" style="padding:0;overflow:hidden">
+      {% for c in comentarios %}
+        <div class="perfil-comentario-item {% if not loop.last %}perfil-comentario-borda{% endif %}">
+          <div class="perfil-comentario-topo">
+            <a href="{{ url_for('detalhes', nome_filme=c.titulo) }}"
+               class="perfil-comentario-titulo">🎬 {{ c.titulo }}</a>
+            <div style="display:flex;align-items:center;gap:0.75rem;flex-shrink:0">
+              {% if c.nota %}
+                <span class="post-nota">{{ c.nota }} ★</span>
+              {% endif %}
+              <span class="perfil-comentario-data">{{ c.data[:10] }}</span>
+              <form method="POST" action="{{ url_for('excluir_comentario', comentario_id=c.id) }}"
+                    style="display:inline" onsubmit="return confirm('Excluir?')">
+                <button type="submit" class="btn-excluir">🗑️</button>
+              </form>
+            </div>
+          </div>
+          <p class="perfil-comentario-texto">{{ c.comentario }}</p>
         </div>
-        <a href="{{ url_for('detalhes', nome_filme=c.titulo) }}" class="post-filme">🎬 {{ c.titulo }}</a>
-        <div class="post-texto">{{ c.comentario }}</div>
-        <div class="post-actions">
-          <form method="POST" action="{{ url_for('excluir_comentario', comentario_id=c.id) }}"
-                style="display:inline" onsubmit="return confirm('Excluir?')">
-            <button type="submit" class="btn-excluir">🗑️ Excluir</button>
-          </form>
-        </div>
-      </div>
-    {% endfor %}
+      {% endfor %}
+    </div>
   {% else %}
     <div class="empty-state" style="padding:1.5rem">
       <p>Você ainda não publicou nenhum comentário.</p>

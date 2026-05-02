@@ -41,7 +41,11 @@
         </div>
 
         <a href="{{ url_for('detalhes', nome_filme=p.titulo) }}" class="post-banner">
-          <span class="post-banner-icon">🎬</span>
+          {% if p.poster_url %}
+            <img src="{{ p.poster_url }}" class="post-banner-poster" alt="{{ p.titulo }}">
+          {% else %}
+            <span class="post-banner-icon">🎬</span>
+          {% endif %}
           <span class="post-banner-titulo">{{ p.titulo }}</span>
           <span class="post-banner-link">Ver detalhes →</span>
         </a>
