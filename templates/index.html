@@ -4,7 +4,6 @@
 {% block content %}
 <div class="page">
 
-  <!-- ── BUSCA ────────────────────────────────────────────────────── -->
   <div class="search-hero">
     <h1>Encontre seu próximo filme</h1>
     <p>Digite um título e o VILU recomenda com explicação do porquê</p>
@@ -31,7 +30,6 @@
 
   {% if filme_escolhido %}
 
-    <!-- ── RESULTADO DO FILME PESQUISADO ────────────────────────────── -->
     <div class="card" id="resultado-busca">
       <div class="result-header">
         {% if poster_principal %}
@@ -49,9 +47,30 @@
             <span class="badge badge-content">Filtragem por Conteúdo</span>
           {% endif %}
 
-          <!-- ── AVALIAR O FILME PESQUISADO ─────────────────────────── -->
+          <div class="xai-box" style="margin-top:1rem">
+            <strong>Por que essas recomendações?</strong><br>
+            {{ explicacao }}
+          </div>
+
+          <div style="margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
+             <p style="font-size: 0.9rem; line-height: 1.4; color: #ccc; margin-bottom: 15px;">{{ resumo_principal }}</p>
+             
+             {% if streamings_principal %}
+                <p style="font-size: 0.85rem; color: #ff4b2b; margin-bottom: 8px; font-weight: bold; display: flex; align-items: center; gap: 5px;">
+                    📺 Onde assistir:
+                </p>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    {% for s in streamings_principal %}
+                        <img src="{{ s.logo }}" title="{{ s.nome }}" alt="{{ s.nome }}" 
+                             style="width: 35px; height: 35px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); transition: transform 0.2s;"
+                             onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+                    {% endfor %}
+                </div>
+             {% endif %}
+          </div>
+
           {% if movie_id_pesquisado %}
-            <div class="avaliar-form" style="margin-top:1rem">
+            <div class="avaliar-form" style="margin-top:1.5rem">
               {% if nota_filme_pesquisado %}
                 <div class="alert alert-info" style="margin-bottom:0.5rem">
                   Sua avaliação: <strong>{{ nota_filme_pesquisado }} / 5.0</strong>
@@ -88,14 +107,7 @@
       </div>
     </div>
 
-    <!-- ── XAI: por que essas recomendações ── -->
-    <div class="xai-box" style="margin-bottom:1rem">
-      <strong>Por que essas recomendações?</strong><br>
-      {{ explicacao }}
-    </div>
-
-    <!-- ── LISTA DE RECOMENDAÇÕES ──────────────────────────────────── -->
-    <h3 style="font-size:1rem;margin:0 0 0.75rem;color:var(--text-muted)">
+    <h3 style="font-size:1rem;margin:1.5rem 0 0.75rem;color:var(--text-muted)">
       Sugestões para você
     </h3>
 
@@ -126,17 +138,12 @@
 
   {% else %}
 
-    <!-- Grade de filmes populares — exibida antes de qualquer pesquisa -->
     {% if filmes_destaque %}
       <h3 style="font-size:1rem;margin:1.5rem 0 1rem;color:var(--text-muted)">
         🔥 Populares no VILU
       </h3>
       <div class="destaque-grid">
         {% for f in filmes_destaque %}
-          <!--
-            Ao clicar, preenche o campo de busca com o título do filme
-            e submete o formulário — gera as recomendações igual a uma busca manual.
-          -->
           <div class="destaque-card"
                onclick="buscarFilme('{{ f.titulo | replace("'", "\'") }}')">
             {% if f.poster %}
@@ -162,7 +169,7 @@
 </div>
 
 <script>
-// ── AVALIAÇÃO DO FILME PESQUISADO ─────────────────────────────────────────────
+// (O script permanece o mesmo do seu arquivo original)
 function selecionarNotaPesquisado(n) {
   document.getElementById('nota-pesquisado').value = n;
   document.querySelectorAll('.star-btn').forEach(btn => {
@@ -175,7 +182,6 @@ function selecionarNotaPesquisado(n) {
   selecionarNotaPesquisado({{ nota_filme_pesquisado|int }});
 {% endif %}
 
-// ── AUTOCOMPLETE ──────────────────────────────────────────────────────────────
 const input     = document.getElementById('input-busca');
 const sugestoes = document.getElementById('sugestoes');
 let   timer     = null;
@@ -226,8 +232,6 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.search-row')) fecharSugestoes();
 });
 
-// Chamado ao clicar em um filme da grade de populares:
-// preenche o campo e submete o formulário de busca
 function buscarFilme(titulo) {
   input.value = titulo;
   document.getElementById('form-busca').submit();

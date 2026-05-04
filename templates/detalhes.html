@@ -4,20 +4,11 @@
 {% block content %}
 <div class="page">
 
-  <!--
-    Botão Voltar inteligente:
-    - Se o usuário veio de uma busca (?origem=busca), usa history.back()
-      para voltar ao resultado anterior sem recarregar a página.
-    - Senão, volta para a Principal.
-  -->
-  <!-- history.back() retorna sempre para a página anterior corretamente,
-       seja busca, principal ou perfil de outro usuário -->
   <a href="#" onclick="history.back(); return false;"
      class="btn btn-outline btn-sm" style="margin-bottom:1.5rem">
     ← Voltar
   </a>
 
-  <!-- INFORMAÇÕES DO FILME -->
   <div class="card">
     <div class="detail-layout">
 
@@ -55,17 +46,30 @@
 
         <p class="sinopse">{{ sinopse }}</p>
 
-        <!--
-          XAI DE REFORÇO:
-          Aparece próximo à sinopse e explica ao usuário por que esse filme
-          foi recomendado — reforço positivo da sugestão do algoritmo.
-        -->
+        {% if streamings %}
+        <div class="streaming-container" style="margin-top: 1.5rem; padding: 1rem; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid var(--border);">
+            <p style="font-size: 0.85rem; color: #ff4b2b; margin-bottom: 10px; font-weight: bold; display: flex; align-items: center; gap: 5px;">
+                <span>📺</span> Disponível em (Brasil):
+            </p>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                {% for s in streamings %}
+                    <div style="text-align: center; width: 50px;">
+                        <img src="{{ s.logo }}" title="{{ s.nome }}" alt="{{ s.nome }}" 
+                             style="width: 40px; height: 40px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1);">
+                        <p style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            {{ s.nome }}
+                        </p>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
         <div class="xai-box" style="margin-top:1rem">
           <strong>Por que esse filme para você?</strong><br>
           {{ xai_detalhe }}
         </div>
 
-        <!-- AVALIAÇÃO PRIVADA -->
         <div class="avaliar-form">
           {% if nota_usuario %}
             <div class="alert alert-info" style="margin-bottom:0.75rem">
@@ -106,7 +110,6 @@
     </div>
   </div>
 
-  <!-- PUBLICAR COMENTÁRIO -->
   <div class="card">
     <h3 style="margin-bottom:0.5rem">Publicar no feed</h3>
 
@@ -143,7 +146,6 @@
     </form>
   </div>
 
-  <!-- COMENTÁRIOS DO FILME -->
   {% if comentarios %}
     <h3 style="margin-bottom:0.75rem;font-size:1rem;color:var(--text-muted)">
       {{ comentarios|length }}

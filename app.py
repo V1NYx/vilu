@@ -42,7 +42,7 @@ criar_tabelas()
 
 TMDB_API_KEY = os.getenv('TMDB_API_KEY', '417fbe5b98d6a5a1daff00dfc9a77915')
 
-# Cache título → (sinopse, poster_url, titulo_ptbr)
+# Cache título → (sinopse, poster_url, titulo_ptbr, streamings)
 # Evita chamadas repetidas ao TMDB para o mesmo filme
 _cache_tmdb = {}
 
@@ -63,15 +63,22 @@ def login_required(f):
 
 def buscar_info_tmdb(titulo_movielens):
     """
-    Busca sinopse, pôster e título PT-BR no TMDB.
+    Busca sinopse, pôster, título PT-BR e STREAMINGS no TMDB.
     Remove o ano antes de buscar: 'Toy Story (1995)' → 'Toy Story'.
-    Retorna: (sinopse, poster_url, titulo_ptbr)
+    Retorna: (sinopse, poster_url, titulo_ptbr, streamings)
     Resultado salvo no cache — sem repetição de requisições HTTP.
     """
     if titulo_movielens in _cache_tmdb:
         return _cache_tmdb[titulo_movielens]
 
     titulo_limpo = re.sub(r'\s*\(\d{4}\)', '', titulo_movielens).strip()
+    
+    # Tratamento para nomes como "Matrix, The" -> "The Matrix"
+    if ', The' in titulo_limpo:
+        titulo_limpo = 'The ' + titulo_limpo.replace(', The', '')
+    elif ', A' in titulo_limpo:
+        titulo_limpo = 'A ' + titulo_limpo.replace(', A', '')
+
     params = {'api_key': TMDB_API_KEY, 'query': titulo_limpo, 'language': 'pt-BR'}
 
     try:
@@ -80,25 +87,41 @@ def buscar_info_tmdb(titulo_movielens):
             params=params, timeout=5
         )
         if resp.status_code == 401:
-            result = ('Chave da API TMDB inválida.', None, None)
+            result = ('Chave da API TMDB inválida.', None, None, [])
         else:
             resultados = resp.json().get('results', [])
             if resultados:
                 item    = resultados[0]
+                m_id    = item.get('id')
                 sinopse = item.get('overview') or 'Sinopse não disponível em português.'
                 path    = item.get('poster_path')
+                
+                # BUSCA DE STREAMINGS (Watch Providers)
+                streamings = []
+                if m_id:
+                    url_p = f"https://api.themoviedb.org/3/movie/{m_id}/watch/providers"
+                    r_p = requests.get(url_p, params={'api_key': TMDB_API_KEY}, timeout=3).json()
+                    # Filtra apenas streamings pagos (flatrate) no Brasil (BR)
+                    br_p = r_p.get('results', {}).get('BR', {}).get('flatrate', [])
+                    for p in br_p:
+                        streamings.append({
+                            'nome': p.get('provider_name'),
+                            'logo': f"https://image.tmdb.org/t/p/original{p.get('logo_path')}"
+                        })
+
                 result  = (
                     sinopse,
                     f'https://image.tmdb.org/t/p/w500{path}' if path else None,
-                    item.get('title') or None
+                    item.get('title') or None,
+                    streamings
                 )
             else:
-                result = ('Sinopse não disponível.', None, None)
+                result = ('Sinopse não disponível.', None, None, [])
     except requests.exceptions.Timeout:
-        result = ('Tempo de conexão esgotado.', None, None)
+        result = ('Tempo de conexão esgotado.', None, None, [])
     except Exception as e:
         print(f'Erro TMDB: {e}')
-        result = ('Sinopse não disponível.', None, None)
+        result = ('Sinopse não disponível.', None, None, [])
 
     _cache_tmdb[titulo_movielens] = result
     return result
@@ -110,7 +133,7 @@ def buscar_info_tmdb(titulo_movielens):
 
 def _montar_destaque(titulo):
     """Monta o dicionário de um filme para a grade de populares."""
-    _, poster, ptbr = buscar_info_tmdb(titulo)
+    _, poster, ptbr, _ = buscar_info_tmdb(titulo)
     busca_f = filmes[filmes['title'] == titulo]
     generos = busca_f.iloc[0]['genres'].split('|')[:2] if len(busca_f) > 0 else []
     return {'titulo': titulo, 'titulo_ptbr': ptbr, 'poster': poster, 'generos': generos}
@@ -178,6 +201,8 @@ def home():
     explicacao       = ''
     filme_escolhido  = ''
     poster_principal = None
+    resumo_principal = ''
+    streamings_principal = []
     modo = erro      = ''
 
     if request.method == 'POST':
@@ -190,11 +215,11 @@ def home():
 
         if titulo_completo:
             filme_escolhido        = titulo_completo
-            _, poster_principal, _ = buscar_info_tmdb(titulo_completo)
+            resumo_principal, poster_principal, _, streamings_principal = buscar_info_tmdb(titulo_completo)
 
     # Busca pôsteres das recomendações em paralelo
     def _enriquecer(rec):
-        _, poster, ptbr = buscar_info_tmdb(rec['titulo'])
+        _, poster, ptbr, _ = buscar_info_tmdb(rec['titulo'])
         return {**rec, 'poster': poster, 'titulo_ptbr': ptbr}
 
     with ThreadPoolExecutor(max_workers=8) as ex:
@@ -220,6 +245,8 @@ def home():
         filme_escolhido       = filme_escolhido,
         lista_recomendacoes   = recomendacoes_com_poster,
         explicacao            = explicacao,
+        resumo_principal      = resumo_principal,
+        streamings_principal  = streamings_principal,
         modo                  = modo,
         erro                  = erro,
         poster_principal      = poster_principal,
@@ -247,7 +274,7 @@ def principal():
     db.close()
 
     def _enriquecer_post(p):
-        _, poster, _ = buscar_info_tmdb(p['titulo'])
+        _, poster, _, _ = buscar_info_tmdb(p['titulo'])
         return {**dict(p), 'poster_url': poster}
 
     with ThreadPoolExecutor(max_workers=10) as ex:
@@ -298,7 +325,7 @@ def detalhes(nome_filme):
     """, (movie_id,)).fetchall()
     db.close()
 
-    sinopse, poster_url, titulo_ptbr = buscar_info_tmdb(nome_filme)
+    sinopse, poster_url, titulo_ptbr, streamings = buscar_info_tmdb(nome_filme)
 
     return render_template('detalhes.html',
         titulo       = nome_filme,
@@ -308,6 +335,7 @@ def detalhes(nome_filme):
         nota_media   = nota_media,
         sinopse      = sinopse,
         poster_url   = poster_url,
+        streamings   = streamings,
         nota_usuario = nota_usuario,
         comentarios  = comentarios,
         xai_detalhe  = gerar_xai_detalhe(nome_filme, nota_usuario, user_id),
