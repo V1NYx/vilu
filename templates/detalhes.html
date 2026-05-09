@@ -9,68 +9,102 @@
     ← Voltar
   </a>
 
-  <div class="card">
-    <div class="detail-layout">
+  <!-- LAYOUT PRINCIPAL: 2 COLUNAS -->
+  <div class="detalhe-grid">
+
+    <!-- COLUNA ESQUERDA: pôster + info + avaliação -->
+    <div class="detalhe-col-left">
 
       {% if poster_url %}
-        <img src="{{ poster_url }}" class="detail-poster" alt="Pôster de {{ titulo }}">
+        <img src="{{ poster_url }}" class="detalhe-poster-full" alt="Pôster de {{ titulo }}">
       {% else %}
-        <div class="detail-poster-placeholder">🎬</div>
+        <div class="detalhe-poster-placeholder-full">🎬</div>
       {% endif %}
 
-      <div class="detail-info">
-        <h1>
+      <!-- título, gêneros, nota -->
+      <div class="detalhe-meta">
+        <h1 class="detalhe-titulo">
           {% if titulo_ptbr and titulo_ptbr != titulo %}
             {{ titulo_ptbr }}
-            <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;
-                         display:block;margin-top:2px">
-              {{ titulo }}
-            </span>
+            <span class="detalhe-titulo-orig">{{ titulo }}</span>
           {% else %}
             {{ titulo }}
           {% endif %}
         </h1>
 
-        <div class="generos-row">
+        <div class="generos-row" style="margin-top:0.75rem">
           {% for g in generos %}
             <span class="tag-genero">{{ g }}</span>
           {% endfor %}
         </div>
 
-        <div class="nota-media">
+        <div class="nota-media" style="margin-top:0.75rem">
           ★ {{ nota_media }} / 5.0
-          <span style="font-size:0.8rem;color:var(--text-muted);font-weight:400">
-            — média MovieLens
-          </span>
+          <span style="font-size:0.8rem;color:var(--text-muted);font-weight:400">— média MovieLens</span>
         </div>
 
-        <p class="sinopse">{{ sinopse }}</p>
+        <p class="sinopse" style="margin-top:1rem">{{ sinopse }}</p>
 
-        {% if streamings %}
-        <div class="streaming-container" style="margin-top: 1.5rem; padding: 1rem; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid var(--border);">
-            <p style="font-size: 0.85rem; color: #ff4b2b; margin-bottom: 10px; font-weight: bold; display: flex; align-items: center; gap: 5px;">
-                <span>📺</span> Disponível em (Brasil):
-            </p>
-            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                {% for s in streamings %}
-                    <div style="text-align: center; width: 50px;">
-                        <img src="{{ s.logo }}" title="{{ s.nome }}" alt="{{ s.nome }}" 
-                             style="width: 40px; height: 40px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1);">
-                        <p style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                            {{ s.nome }}
-                        </p>
-                    </div>
-                {% endfor %}
+        {% if diretores %}
+        <div class="creditos-box" style="margin-top:1.25rem">
+          <p class="section-label" style="margin-bottom:0.6rem">🎬 Direção</p>
+          <div class="diretores-row">
+            {% for d in diretores %}
+            <div class="diretor-item">
+              {% if d.foto %}
+                <img src="{{ d.foto }}" alt="{{ d.nome }}" class="credito-foto">
+              {% else %}
+                <div class="credito-foto credito-sem-foto">🎬</div>
+              {% endif %}
+              <span class="credito-nome">{{ d.nome }}</span>
             </div>
+            {% endfor %}
+          </div>
         </div>
         {% endif %}
 
-        <div class="xai-box" style="margin-top:1rem">
+        {% if elenco %}
+        <div class="creditos-box" style="margin-top:1rem">
+          <p class="section-label" style="margin-bottom:0.6rem">🎭 Elenco principal</p>
+          <div class="elenco-scroll">
+            {% for a in elenco %}
+            <div class="ator-card">
+              {% if a.foto %}
+                <img src="{{ a.foto }}" alt="{{ a.nome }}" class="ator-foto">
+              {% else %}
+                <div class="ator-foto ator-sem-foto">👤</div>
+              {% endif %}
+              <div class="ator-info">
+                <span class="ator-nome">{{ a.nome }}</span>
+                <span class="ator-personagem">{{ a.personagem }}</span>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% if streamings %}
+        <div class="streaming-box">
+          <p class="section-label">📺 Disponível em (Brasil):</p>
+          <div class="streaming-logos">
+            {% for s in streamings %}
+              <div class="streaming-item">
+                <img src="{{ s.logo }}" title="{{ s.nome }}" alt="{{ s.nome }}">
+                <span>{{ s.nome }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="xai-box" style="margin-top:1.25rem">
           <strong>Por que esse filme para você?</strong><br>
           {{ xai_detalhe }}
         </div>
 
-        <div class="avaliar-form">
+        <!-- Avaliação -->
+        <div class="avaliar-form" style="margin-top:1.5rem">
           {% if nota_usuario %}
             <div class="alert alert-info" style="margin-bottom:0.75rem">
               Sua avaliação: <strong>{{ nota_usuario }} / 5.0</strong>
@@ -80,7 +114,6 @@
             <h3>Avaliar este filme</h3>
             <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem">
               Sua nota é privada e melhora suas recomendações.
-              Se comentar, ela aparece automaticamente no post.
             </p>
           {% endif %}
 
@@ -89,7 +122,6 @@
             <input type="hidden" name="titulo"   value="{{ titulo }}">
             <input type="hidden" name="origem"   value="{{ request.args.get('origem', '') }}">
             <input type="hidden" name="nota"     id="nota-hidden" value="">
-
             <div class="rating-row">
               {% for n in [1, 2, 3, 4, 5] %}
                 <button type="button"
@@ -108,88 +140,103 @@
         </div>
       </div>
     </div>
-  </div>
 
-  <div class="card">
-    <h3 style="margin-bottom:0.5rem">Publicar no feed</h3>
+    <!-- COLUNA DIREITA: trailer + publicar + comentários -->
+    <div class="detalhe-col-right">
 
-    {% if nota_usuario %}
-      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">
-        Seu comentário será publicado com sua avaliação de
-        <strong style="color:var(--yellow)">{{ nota_usuario }} ★</strong>.
-      </p>
-    {% else %}
-      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">
-        Você ainda não avaliou este filme — o comentário ficará sem nota.
-        Para incluir uma nota, avalie acima primeiro.
-      </p>
-    {% endif %}
-
-    <form method="POST" action="{{ url_for('comentar') }}">
-      <input type="hidden" name="movie_id" value="{{ movie_id }}">
-      <input type="hidden" name="titulo"   value="{{ titulo }}">
-
-      <div class="form-group">
-        <textarea name="comentario" rows="3"
-          placeholder="O que você achou de {{ titulo }}?"
-          maxlength="500"
-          style="width:100%;padding:0.65rem 1rem;background:var(--surface);
-                 border:1px solid var(--border);border-radius:8px;color:var(--text);
-                 font-size:0.95rem;resize:vertical;outline:none;font-family:inherit"
-          required></textarea>
-        <div style="font-size:0.78rem;color:var(--text-muted);text-align:right;margin-top:4px">
-          máx. 500 caracteres
+      {% if trailer_key %}
+      <div class="card" style="padding:1.25rem">
+        <p class="section-label" style="margin-bottom:0.6rem">
+          🎬 Trailer
+          <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400">(dublado quando disponível)</span>
+        </p>
+        <div class="trailer-wrapper">
+          <iframe
+            src="https://www.youtube.com/embed/{{ trailer_key }}?rel=0&modestbranding=1"
+            title="Trailer de {{ titulo_ptbr or titulo }}"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen>
+          </iframe>
         </div>
       </div>
+      {% endif %}
 
-      <button type="submit" class="btn btn-primary">Publicar</button>
-    </form>
-  </div>
-
-  {% if comentarios %}
-    <h3 style="margin-bottom:0.75rem;font-size:1rem;color:var(--text-muted)">
-      {{ comentarios|length }}
-      comentário{% if comentarios|length != 1 %}s{% endif %}
-    </h3>
-
-    {% for c in comentarios %}
-      <div class="post-card">
-        <div class="post-header">
-          <a href="{{ url_for('usuario_publico', uid=c.autor_id) }}" class="post-autor">
-            {{ c.autor }}
-          </a>
-          {% if c.nota %}
-            <span class="post-nota">{{ c.nota }} ★</span>
-          {% endif %}
-          <span class="post-data">{{ c.data[:10] }}</span>
-        </div>
-
-        <div class="post-texto">{{ c.comentario }}</div>
-
-        {% if c.autor_id == user_id %}
-          <div class="post-actions">
-            <form method="POST"
-                  action="{{ url_for('excluir_comentario', comentario_id=c.id) }}"
-                  style="display:inline"
-                  onsubmit="return confirm('Excluir este comentário?')">
-              <button type="submit" class="btn-excluir">🗑️ Excluir</button>
-            </form>
-          </div>
+      <!-- Publicar no feed -->
+      <div class="card">
+        <h3 style="margin-bottom:0.5rem">Publicar no feed</h3>
+        {% if nota_usuario %}
+          <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">
+            Seu comentário será publicado com sua avaliação de
+            <strong style="color:var(--yellow)">{{ nota_usuario }} ★</strong>.
+          </p>
+        {% else %}
+          <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">
+            Você ainda não avaliou este filme — o comentário ficará sem nota.
+          </p>
         {% endif %}
-      </div>
-    {% endfor %}
 
-  {% else %}
-    <div class="empty-state" style="padding:2rem">
-      <div class="icon">💬</div>
-      <p>Nenhum comentário ainda. Seja o primeiro!</p>
-    </div>
-  {% endif %}
+        <form method="POST" action="{{ url_for('comentar') }}">
+          <input type="hidden" name="movie_id" value="{{ movie_id }}">
+          <input type="hidden" name="titulo"   value="{{ titulo }}">
+          <div class="form-group">
+            <textarea name="comentario" rows="3"
+              placeholder="O que você achou de {{ titulo }}?"
+              maxlength="500"
+              style="width:100%;padding:0.65rem 1rem;background:var(--surface);
+                     border:1px solid var(--border);border-radius:8px;color:var(--text);
+                     font-size:0.95rem;resize:vertical;outline:none;font-family:inherit"
+              required></textarea>
+            <div style="font-size:0.78rem;color:var(--text-muted);text-align:right;margin-top:4px">
+              máx. 500 caracteres
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Publicar</button>
+        </form>
+      </div>
+
+      <!-- Comentários -->
+      {% if comentarios %}
+        <h3 style="margin-bottom:0.75rem;font-size:1rem;color:var(--text-muted)">
+          {{ comentarios|length }}
+          comentário{% if comentarios|length != 1 %}s{% endif %}
+        </h3>
+        {% for c in comentarios %}
+          <div class="post-card">
+            <div class="post-header">
+              <a href="{{ url_for('usuario_publico', uid=c.autor_id) }}" class="post-autor">
+                {{ c.autor }}
+              </a>
+              {% if c.nota %}
+                <span class="post-nota">{{ c.nota }} ★</span>
+              {% endif %}
+              <span class="post-data">{{ c.data[:10] }}</span>
+            </div>
+            <div class="post-texto">{{ c.comentario }}</div>
+            {% if c.autor_id == user_id %}
+              <div class="post-actions">
+                <form method="POST"
+                      action="{{ url_for('excluir_comentario', comentario_id=c.id) }}"
+                      style="display:inline"
+                      onsubmit="return confirm('Excluir este comentário?')">
+                  <button type="submit" class="btn-excluir">🗑️ Excluir</button>
+                </form>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state" style="padding:2rem">
+          <div class="icon">💬</div>
+          <p>Nenhum comentário ainda. Seja o primeiro!</p>
+        </div>
+      {% endif %}
+
+    </div><!-- /col-right -->
+  </div><!-- /detalhe-grid -->
 
 </div>
 
 <script>
-// Seleciona estrelas e exibe o botão Salvar
 function selecionarNota(n) {
   document.getElementById('nota-hidden').value = n;
   document.querySelectorAll('.star-btn').forEach(btn => {
@@ -197,8 +244,6 @@ function selecionarNota(n) {
   });
   document.getElementById('btn-avaliar').style.display = 'inline-flex';
 }
-
-// Pré-seleciona as estrelas se o usuário já avaliou este filme
 {% if nota_usuario %}
   selecionarNota({{ nota_usuario|int }});
 {% endif %}

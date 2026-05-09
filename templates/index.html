@@ -22,6 +22,15 @@
         <button type="submit" class="btn btn-primary">Buscar</button>
       </div>
     </form>
+
+    <div class="category-chips" style="margin-top: 1.5rem; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+      <span style="color: var(--text-muted); font-size: 0.9rem; width: 100%; text-align: center; margin-bottom: 5px;">Ou navegue por categoria:</span>
+      <a href="{{ url_for('filmes_por_genero', nome_genero='Action') }}" class="btn btn-outline btn-sm">💥 Ação</a>
+      <a href="{{ url_for('filmes_por_genero', nome_genero='Comedy') }}" class="btn btn-outline btn-sm">😂 Comédia</a>
+      <a href="{{ url_for('filmes_por_genero', nome_genero='Horror') }}" class="btn btn-outline btn-sm">👻 Terror</a>
+      <a href="{{ url_for('filmes_por_genero', nome_genero='Romance') }}" class="btn btn-outline btn-sm">❤️ Romance</a>
+      <a href="{{ url_for('filmes_por_genero', nome_genero='Sci-Fi') }}" class="btn btn-outline btn-sm">🚀 Ficção</a>
+    </div>
   </div>
 
   {% if erro %}
@@ -30,111 +39,141 @@
 
   {% if filme_escolhido %}
 
-    <div class="card" id="resultado-busca">
-      <div class="result-header">
-        {% if poster_principal %}
-          <img src="{{ poster_principal }}" class="result-poster" alt="{{ filme_escolhido }}">
-        {% else %}
-          <div class="result-poster-placeholder">🎬</div>
-        {% endif %}
+    <!-- LAYOUT DE RESULTADO: 2 COLUNAS -->
+    <div class="busca-resultado-grid">
 
-        <div class="result-info">
-          <h2>{{ filme_escolhido }}</h2>
+      <!-- COLUNA ESQUERDA: info do filme -->
+      <div class="busca-col-info">
+        <div class="card" id="resultado-busca">
 
-          {% if modo == 'colaborativo' %}
-            <span class="badge badge-colab">Filtragem Colaborativa + Gênero</span>
-          {% else %}
-            <span class="badge badge-content">Filtragem por Conteúdo</span>
-          {% endif %}
+          <div style="display:flex;gap:1.5rem;align-items:flex-start">
+            {% if poster_principal %}
+              <img src="{{ poster_principal }}" class="busca-poster" alt="{{ filme_escolhido }}">
+            {% else %}
+              <div class="busca-poster-placeholder">🎬</div>
+            {% endif %}
 
-          <div class="xai-box" style="margin-top:1rem">
-            <strong>Por que essas recomendações?</strong><br>
-            {{ explicacao }}
-          </div>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.4rem">
+                <h2 style="font-size:1.4rem;margin:0">{{ filme_escolhido }}</h2>
+                <a href="{{ url_for('detalhes', nome_filme=filme_escolhido) }}"
+                   class="btn btn-outline btn-sm" style="white-space:nowrap;flex-shrink:0">
+                  Ver detalhes completos →
+                </a>
+              </div>
 
-          <div style="margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
-             <p style="font-size: 0.9rem; line-height: 1.4; color: #ccc; margin-bottom: 15px;">{{ resumo_principal }}</p>
-             
-             {% if streamings_principal %}
-                <p style="font-size: 0.85rem; color: #ff4b2b; margin-bottom: 8px; font-weight: bold; display: flex; align-items: center; gap: 5px;">
-                    📺 Onde assistir:
-                </p>
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    {% for s in streamings_principal %}
-                        <img src="{{ s.logo }}" title="{{ s.nome }}" alt="{{ s.nome }}" 
-                             style="width: 35px; height: 35px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); transition: transform 0.2s;"
-                             onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
-                    {% endfor %}
-                </div>
-             {% endif %}
-          </div>
-
-          {% if movie_id_pesquisado %}
-            <div class="avaliar-form" style="margin-top:1.5rem">
-              {% if nota_filme_pesquisado %}
-                <div class="alert alert-info" style="margin-bottom:0.5rem">
-                  Sua avaliação: <strong>{{ nota_filme_pesquisado }} / 5.0</strong>
-                </div>
+              {% if modo == 'colaborativo' %}
+                <span class="badge badge-colab">Filtragem Colaborativa + Gênero</span>
               {% else %}
-                <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.5rem">
-                  Avalie este filme para personalizar suas recomendações
-                </p>
+                <span class="badge badge-content">Filtragem por Conteúdo</span>
               {% endif %}
 
-              <form method="POST" action="{{ url_for('avaliar') }}">
-                <input type="hidden" name="movie_id" value="{{ movie_id_pesquisado }}">
-                <input type="hidden" name="titulo"   value="{{ filme_escolhido }}">
-                <input type="hidden" name="nota"     id="nota-pesquisado" value="">
-                <div class="rating-row">
-                  {% for n in [1, 2, 3, 4, 5] %}
-                    <button type="button"
-                      class="star-btn {% if nota_filme_pesquisado and nota_filme_pesquisado|int == n %}selected{% endif %}"
-                      data-nota="{{ n }}"
-                      onclick="selecionarNotaPesquisado({{ n }})">
-                      {{ n }} ★
-                    </button>
-                  {% endfor %}
-                  <button type="submit" class="btn btn-primary btn-sm"
-                          id="btn-salvar-pesquisado" style="display:none">
-                    Salvar
-                  </button>
-                </div>
-              </form>
+              <div class="xai-box" style="margin-top:1rem">
+                <strong>Por que essas recomendações?</strong><br>
+                {{ explicacao }}
+              </div>
             </div>
+          </div>
+
+          <div style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.25rem">
+            <p style="font-size:0.95rem;line-height:1.6;color:#ccc;margin-bottom:1rem">{{ resumo_principal }}</p>
+
+            {% if streamings_principal %}
+              <p class="section-label">📺 Onde assistir:</p>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem">
+                {% for s in streamings_principal %}
+                  <img src="{{ s.logo }}" title="{{ s.nome }}" alt="{{ s.nome }}"
+                       style="width:36px;height:36px;border-radius:8px;border:1px solid rgba(255,255,255,0.1)">
+                {% endfor %}
+              </div>
+            {% endif %}
+
+            {% if movie_id_pesquisado %}
+              <div class="avaliar-form">
+                {% if nota_filme_pesquisado %}
+                  <div class="alert alert-info" style="margin-bottom:0.5rem">
+                    Sua avaliação: <strong>{{ nota_filme_pesquisado }} / 5.0</strong>
+                  </div>
+                {% else %}
+                  <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.5rem">
+                    Avalie este filme para personalizar suas recomendações
+                  </p>
+                {% endif %}
+
+                <form method="POST" action="{{ url_for('avaliar') }}">
+                  <input type="hidden" name="movie_id" value="{{ movie_id_pesquisado }}">
+                  <input type="hidden" name="titulo"   value="{{ filme_escolhido }}">
+                  <input type="hidden" name="nota"     id="nota-pesquisado" value="">
+                  <div class="rating-row">
+                    {% for n in [1, 2, 3, 4, 5] %}
+                      <button type="button"
+                        class="star-btn {% if nota_filme_pesquisado and nota_filme_pesquisado|int == n %}selected{% endif %}"
+                        data-nota="{{ n }}"
+                        onclick="selecionarNotaPesquisado({{ n }})">
+                        {{ n }} ★
+                      </button>
+                    {% endfor %}
+                    <button type="submit" class="btn btn-primary btn-sm"
+                            id="btn-salvar-pesquisado" style="display:none">
+                      Salvar
+                    </button>
+                  </div>
+                </form>
+              </div>
+            {% endif %}
+          </div>
+
+          {% if trailer_key_principal %}
+          <div style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.25rem">
+            <p class="section-label" style="margin-bottom:0.6rem">
+              🎬 Trailer
+              <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400">(dublado quando disponível)</span>
+            </p>
+            <div class="trailer-wrapper">
+              <iframe
+                src="https://www.youtube.com/embed/{{ trailer_key_principal }}?rel=0&modestbranding=1"
+                title="Trailer de {{ filme_escolhido }}"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen>
+              </iframe>
+            </div>
+          </div>
           {% endif %}
 
         </div>
       </div>
-    </div>
 
-    <h3 style="font-size:1rem;margin:1.5rem 0 0.75rem;color:var(--text-muted)">
-      Sugestões para você
-    </h3>
+      <!-- COLUNA DIREITA: sugestões -->
+      <div class="busca-col-sugestoes">
+        <h3 class="sugestoes-titulo">Sugestões para você</h3>
 
-    {% if lista_recomendacoes %}
-      <ul class="rec-list">
-        {% for item in lista_recomendacoes %}
-          <a href="{{ url_for('detalhes', nome_filme=item.titulo) }}?origem=busca"
-             class="rec-item">
-            {% if item.poster %}
-              <img src="{{ item.poster }}" class="rec-item-poster" alt="{{ item.titulo }}">
-            {% else %}
-              <span class="rec-item-poster-placeholder">🎬</span>
-            {% endif %}
-            <span class="rec-title">
-              {{ item.titulo_ptbr if item.titulo_ptbr else item.titulo }}
-              {% if item.titulo_ptbr and item.titulo_ptbr != item.titulo %}
-                <span class="rec-titulo-original">{{ item.titulo }}</span>
-              {% endif %}
-            </span>
-          </a>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <div class="empty-state" style="padding:2rem">
-        <p>Nenhuma sugestão encontrada.</p>
+        {% if lista_recomendacoes %}
+          <ul class="rec-list">
+            {% for item in lista_recomendacoes %}
+              <a href="{{ url_for('detalhes', nome_filme=item.titulo) }}?origem=busca"
+                 class="rec-item">
+                {% if item.poster %}
+                  <img src="{{ item.poster }}" class="rec-item-poster" alt="{{ item.titulo }}">
+                {% else %}
+                  <span class="rec-item-poster-placeholder">🎬</span>
+                {% endif %}
+                <span class="rec-title">
+                  {{ item.titulo_ptbr if item.titulo_ptbr else item.titulo }}
+                  {% if item.titulo_ptbr and item.titulo_ptbr != item.titulo %}
+                    <span class="rec-titulo-original">{{ item.titulo }}</span>
+                  {% endif %}
+                </span>
+              </a>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="empty-state" style="padding:2rem">
+            <p>Nenhuma sugestão encontrada.</p>
+          </div>
+        {% endif %}
       </div>
-    {% endif %}
+
+    </div><!-- /busca-resultado-grid -->
 
   {% else %}
 
@@ -169,7 +208,6 @@
 </div>
 
 <script>
-// (O script permanece o mesmo do seu arquivo original)
 function selecionarNotaPesquisado(n) {
   document.getElementById('nota-pesquisado').value = n;
   document.querySelectorAll('.star-btn').forEach(btn => {

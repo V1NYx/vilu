@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Filmes de {{ genero }} — VILU{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <a href="#" onclick="history.back(); return false;"
+     class="btn btn-outline btn-sm" style="margin-bottom:1.5rem">
+    ← Voltar
+  </a>
+
+  <div class="search-hero" style="text-align: left; padding: 2rem 0 1rem;">
+    <h1>🔥 Explorando: <span style="color: var(--primary);">{{ genero }}</span></h1>
+    <p>Os filmes mais populares dessa categoria no VILU.</p>
+  </div>
+
+  {% if filmes_lista %}
+    <div class="destaque-grid">
+      {% for f in filmes_lista %}
+        <a href="{{ url_for('detalhes', nome_filme=f.titulo) }}" class="destaque-card" style="text-decoration: none; color: inherit;">
+          {% if f.poster %}
+            <img src="{{ f.poster }}"
+                 alt="{{ f.titulo }}"
+                 class="destaque-poster">
+          {% else %}
+            <div class="destaque-poster destaque-placeholder">🎬</div>
+          {% endif %}
+          <div class="destaque-info">
+            <span class="destaque-titulo">{{ f.titulo_ptbr if f.titulo_ptbr else f.titulo }}</span>
+            <span class="destaque-generos">
+              {{ f.generos | join(' · ') }}
+            </span>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state" style="padding:2rem">
+      <p>Nenhum filme encontrado para essa categoria.</p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

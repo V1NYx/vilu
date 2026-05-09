@@ -4,6 +4,7 @@
 #   /              → Busca e recomendações (primeira tela pós-login)
 #   /principal     → Comunidade: feed + busca rápida
 #   /buscar_filmes → Autocomplete de títulos em JSON (chamado pelo JS)
+#   /genero/<g>    → Lista filmes populares de um gênero específico
 #   /detalhes/<f>  → Detalhes: XAI, avaliação privada, comentários
 #   /avaliar       → Salva avaliação privada (POST)
 #   /comentar      → Publica comentário no feed (POST)
@@ -42,7 +43,7 @@ criar_tabelas()
 
 TMDB_API_KEY = os.getenv('TMDB_API_KEY', '417fbe5b98d6a5a1daff00dfc9a77915')
 
-# Cache título → (sinopse, poster_url, titulo_ptbr, streamings)
+# Cache título → (sinopse, poster_url, titulo_ptbr, streamings, trailer_key, elenco, diretores)
 # Evita chamadas repetidas ao TMDB para o mesmo filme
 _cache_tmdb = {}
 
@@ -63,15 +64,18 @@ def login_required(f):
 
 def buscar_info_tmdb(titulo_movielens):
     """
-    Busca sinopse, pôster, título PT-BR e STREAMINGS no TMDB.
+    Busca sinopse, pôster, título PT-BR, streamings, trailer e créditos no TMDB.
     Remove o ano antes de buscar: 'Toy Story (1995)' → 'Toy Story'.
-    Retorna: (sinopse, poster_url, titulo_ptbr, streamings)
+    Retorna: (sinopse, poster_url, titulo_ptbr, streamings, trailer_key, elenco, diretores)
     Resultado salvo no cache — sem repetição de requisições HTTP.
     """
     if titulo_movielens in _cache_tmdb:
         return _cache_tmdb[titulo_movielens]
 
     titulo_limpo = re.sub(r'\s*\(\d{4}\)', '', titulo_movielens).strip()
+    
+    # NOVO: Remove partes com "(a.k.a. ...)" para o TMDB achar o pôster (Ex: Seven, Independence Day)
+    titulo_limpo = re.sub(r'\s*\(a\.k\.a\..*?\)', '', titulo_limpo, flags=re.IGNORECASE).strip()
     
     # Tratamento para nomes como "Matrix, The" -> "The Matrix"
     if ', The' in titulo_limpo:
@@ -87,7 +91,7 @@ def buscar_info_tmdb(titulo_movielens):
             params=params, timeout=5
         )
         if resp.status_code == 401:
-            result = ('Chave da API TMDB inválida.', None, None, [])
+            result = ('Chave da API TMDB inválida.', None, None, [], None, [], [])
         else:
             resultados = resp.json().get('results', [])
             if resultados:
@@ -109,19 +113,64 @@ def buscar_info_tmdb(titulo_movielens):
                             'logo': f"https://image.tmdb.org/t/p/original{p.get('logo_path')}"
                         })
 
+                # BUSCA DE TRAILER (prioriza PT-BR dublado, depois EN)
+                trailer_key = None
+                if m_id:
+                    # Tenta primeiro vídeos em PT-BR (dublado)
+                    url_v = f"https://api.themoviedb.org/3/movie/{m_id}/videos"
+                    for lang in ['pt-BR', 'en-US']:
+                        r_v = requests.get(url_v, params={'api_key': TMDB_API_KEY, 'language': lang}, timeout=3).json()
+                        videos = r_v.get('results', [])
+                        # Prefere Trailer, aceita Teaser como fallback
+                        for tipo in ['Trailer', 'Teaser']:
+                            for v in videos:
+                                if v.get('site') == 'YouTube' and v.get('type') == tipo:
+                                    trailer_key = v.get('key')
+                                    break
+                            if trailer_key:
+                                break
+                        if trailer_key:
+                            break
+
+                # BUSCA DE CRÉDITOS (elenco principal + diretor)
+                elenco    = []
+                diretores = []
+                if m_id:
+                    url_c = f"https://api.themoviedb.org/3/movie/{m_id}/credits"
+                    r_c = requests.get(url_c, params={'api_key': TMDB_API_KEY, 'language': 'pt-BR'}, timeout=3).json()
+                    # Pega os 7 primeiros atores do cast (já vêm ordenados por billing)
+                    for ator in r_c.get('cast', [])[:7]:
+                        foto = ator.get('profile_path')
+                        elenco.append({
+                            'nome':       ator.get('name'),
+                            'personagem': ator.get('character'),
+                            'foto':       f"https://image.tmdb.org/t/p/w185{foto}" if foto else None
+                        })
+                    # Pega diretores do crew
+                    for pessoa in r_c.get('crew', []):
+                        if pessoa.get('job') == 'Director':
+                            foto = pessoa.get('profile_path')
+                            diretores.append({
+                                'nome': pessoa.get('name'),
+                                'foto': f"https://image.tmdb.org/t/p/w185{foto}" if foto else None
+                            })
+
                 result  = (
                     sinopse,
                     f'https://image.tmdb.org/t/p/w500{path}' if path else None,
                     item.get('title') or None,
-                    streamings
+                    streamings,
+                    trailer_key,
+                    elenco,
+                    diretores
                 )
             else:
-                result = ('Sinopse não disponível.', None, None, [])
+                result = ('Sinopse não disponível.', None, None, [], None, [], [])
     except requests.exceptions.Timeout:
-        result = ('Tempo de conexão esgotado.', None, None, [])
+        result = ('Tempo de conexão esgotado.', None, None, [], None, [], [])
     except Exception as e:
         print(f'Erro TMDB: {e}')
-        result = ('Sinopse não disponível.', None, None, [])
+        result = ('Sinopse não disponível.', None, None, [], None, [], [])
 
     _cache_tmdb[titulo_movielens] = result
     return result
@@ -133,7 +182,7 @@ def buscar_info_tmdb(titulo_movielens):
 
 def _montar_destaque(titulo):
     """Monta o dicionário de um filme para a grade de populares."""
-    _, poster, ptbr, _ = buscar_info_tmdb(titulo)
+    _, poster, ptbr, _, _, _, _ = buscar_info_tmdb(titulo)
     busca_f = filmes[filmes['title'] == titulo]
     generos = busca_f.iloc[0]['genres'].split('|')[:2] if len(busca_f) > 0 else []
     return {'titulo': titulo, 'titulo_ptbr': ptbr, 'poster': poster, 'generos': generos}
@@ -150,25 +199,25 @@ print(f"Grade pronta: {len(_FILMES_DESTAQUE)} filmes.")
 def gerar_xai_detalhe(nome_filme, nota_usuario, user_id=None):
     """
     Texto XAI exibido na página de detalhes, próximo à sinopse.
-    Cita filmes do histórico com ao menos 2 gêneros em comum.
+    Cita filmes do histórico com ao menos 2 gêneros em comum (com tom informal).
     """
     generos_set = _generos_idx.get(nome_filme, set())
     generos_str = ', '.join(sorted(generos_set)) if generos_set else 'variados'
-    xai         = f"Este filme pertence aos gêneros {generos_str}. "
+    xai         = f"Esse filme tem tudo a ver com {generos_str}. "
 
     if user_id:
         historico  = buscar_historico_usuario(user_id)
         relevantes = _historico_relevante(historico, nome_filme)
         if relevantes:
             nomes = ' e '.join([h['titulo'] for h in relevantes])
-            xai  += f"Como você avaliou bem {nomes}, o VILU identificou que este filme combina com o seu perfil."
+            xai  += f"Como você curtiu muito {nomes}, o VILU sacou que esse estilo é a sua cara!"
         else:
-            xai  += "Com base nas avaliações da comunidade, o VILU identificou que ele pode combinar com o seu perfil."
+            xai  += "Pelo que a galera que usa o VILU anda assistindo, esse aqui é uma ótima aposta pro seu perfil."
     else:
-        xai += "Com base nas avaliações da comunidade, o VILU identificou que ele pode combinar com o seu perfil."
+        xai += "A comunidade do VILU tá avaliando muito bem esse aqui, acho que você vai gostar!"
 
     if nota_usuario:
-        xai += f" Você já avaliou com nota {nota_usuario} — essa avaliação alimenta suas recomendações futuras."
+        xai += f" Você já deu nota {nota_usuario} pra ele — isso ajuda o VILU a te conhecer melhor!"
 
     return xai
 
@@ -203,6 +252,7 @@ def home():
     poster_principal = None
     resumo_principal = ''
     streamings_principal = []
+    trailer_key_principal = None
     modo = erro      = ''
 
     if request.method == 'POST':
@@ -210,16 +260,22 @@ def home():
         user_id          = session.get('user_id')
         user_nome_sessao = session.get('user_nome', '')
 
-        titulo_completo, recomendacoes, explicacao, modo, erro = \
+        titulo_completo, recomendacoes, explicacao_orig, modo, erro = \
             recomendar_hibrido(nome_digitado, user_id, user_nome_sessao)
 
         if titulo_completo:
             filme_escolhido        = titulo_completo
-            resumo_principal, poster_principal, _, streamings_principal = buscar_info_tmdb(titulo_completo)
+            resumo_principal, poster_principal, _, streamings_principal, trailer_key_principal, _, _ = buscar_info_tmdb(titulo_completo)
+            
+            # Deixando a explicação da HOME mais informal e amigável
+            if modo == 'colaborativo':
+                explicacao = f"Oi, {user_nome_sessao}! Notei que quem gosta de '{filme_escolhido}' também pirou nessas sugestões abaixo. Como você curte esse estilo, separei o que tem de melhor!"
+            else:
+                explicacao = f"Baseado no que esse filme tem de bom, o VILU selecionou essas outras opções que seguem a mesma pegada pra você dar o play!"
 
     # Busca pôsteres das recomendações em paralelo
     def _enriquecer(rec):
-        _, poster, ptbr, _ = buscar_info_tmdb(rec['titulo'])
+        _, poster, ptbr, _, _, _, _ = buscar_info_tmdb(rec['titulo'])
         return {**rec, 'poster': poster, 'titulo_ptbr': ptbr}
 
     with ThreadPoolExecutor(max_workers=8) as ex:
@@ -247,6 +303,7 @@ def home():
         explicacao            = explicacao,
         resumo_principal      = resumo_principal,
         streamings_principal  = streamings_principal,
+        trailer_key_principal = trailer_key_principal,
         modo                  = modo,
         erro                  = erro,
         poster_principal      = poster_principal,
@@ -274,7 +331,7 @@ def principal():
     db.close()
 
     def _enriquecer_post(p):
-        _, poster, _, _ = buscar_info_tmdb(p['titulo'])
+        _, poster, _, _, _, _, _ = buscar_info_tmdb(p['titulo'])
         return {**dict(p), 'poster_url': poster}
 
     with ThreadPoolExecutor(max_workers=10) as ex:
@@ -284,6 +341,42 @@ def principal():
         posts     = posts,
         user_nome = session.get('user_nome', ''),
         user_id   = session['user_id']
+    )
+
+
+# ── ROTA: FILMES POR GÊNERO ───────────────────────────────────────────────────
+
+@app.route('/genero/<path:nome_genero>')
+@login_required
+def filmes_por_genero(nome_genero):
+    """
+    Lista os filmes mais populares de um gênero específico.
+    O gênero é comparado com a coluna 'genres' do MovieLens (ex: 'Action|Comedy').
+    """
+    mascara = filmes['genres'].str.contains(nome_genero, case=False, na=False)
+    filmes_do_genero = filmes[mascara].copy()
+
+    if filmes_do_genero.empty:
+        return render_template('404.html', mensagem=f'Nenhum filme encontrado para "{nome_genero}".'), 404
+
+    # Ordena pelos mais votados (usa contagem_votos do sistema_xai)
+    filmes_do_genero['votos'] = filmes_do_genero['title'].map(contagem_votos).fillna(0)
+    top_filmes = filmes_do_genero.sort_values('votos', ascending=False).head(20)['title'].tolist()
+
+    # Busca pôsteres em paralelo
+    def _enriquecer_genero(titulo):
+        _, poster, ptbr, _, _, _, _ = buscar_info_tmdb(titulo)
+        busca_f = filmes[filmes['title'] == titulo]
+        generos = busca_f.iloc[0]['genres'].split('|')[:2] if len(busca_f) > 0 else []
+        return {'titulo': titulo, 'titulo_ptbr': ptbr, 'poster': poster, 'generos': generos}
+
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        filmes_enriquecidos = list(ex.map(_enriquecer_genero, top_filmes))
+
+    return render_template('genero.html',
+        genero       = nome_genero,
+        filmes_lista = filmes_enriquecidos,
+        user_nome    = session.get('user_nome', '')
     )
 
 
@@ -325,7 +418,7 @@ def detalhes(nome_filme):
     """, (movie_id,)).fetchall()
     db.close()
 
-    sinopse, poster_url, titulo_ptbr, streamings = buscar_info_tmdb(nome_filme)
+    sinopse, poster_url, titulo_ptbr, streamings, trailer_key, elenco, diretores = buscar_info_tmdb(nome_filme)
 
     return render_template('detalhes.html',
         titulo       = nome_filme,
@@ -336,6 +429,9 @@ def detalhes(nome_filme):
         sinopse      = sinopse,
         poster_url   = poster_url,
         streamings   = streamings,
+        trailer_key  = trailer_key,
+        elenco       = elenco,
+        diretores    = diretores,
         nota_usuario = nota_usuario,
         comentarios  = comentarios,
         xai_detalhe  = gerar_xai_detalhe(nome_filme, nota_usuario, user_id),

@@ -56,8 +56,8 @@ a:hover { text-decoration: underline; }
 .navbar-user { font-size: 0.85rem; color: var(--text-muted); }
 
 /* ── LAYOUT ────────────────────────────────────────────────────────────────── */
-.page { max-width: 860px; margin: 0 auto; padding: 2rem 1.5rem; }
-.page-wide { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+.page { max-width: 1400px; margin: 0 auto; padding: 2rem 2.5rem; }
+.page-wide { max-width: 1400px; margin: 0 auto; padding: 2rem 2.5rem; }
 
 /* ── CARDS ─────────────────────────────────────────────────────────────────── */
 .card {
@@ -843,4 +843,311 @@ textarea:focus {
   color: var(--text-muted);
   line-height: 1.6;
   margin: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   LAYOUT DESKTOP FULL-WIDTH — DETALHES
+══════════════════════════════════════════════════════════════════════════════ */
+
+.detalhe-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 2rem;
+  align-items: flex-start;
+}
+
+.detalhe-col-left {
+  position: sticky;
+  top: 76px; /* abaixo da navbar */
+}
+
+.detalhe-poster-full {
+  width: 100%;
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  display: block;
+}
+
+.detalhe-poster-placeholder-full {
+  width: 100%;
+  height: 440px;
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 4rem;
+}
+
+.detalhe-meta {
+  margin-top: 1.25rem;
+}
+
+.detalhe-titulo {
+  font-size: 1.6rem;
+  line-height: 1.2;
+}
+
+.detalhe-titulo-orig {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  display: block;
+  margin-top: 3px;
+}
+
+.detalhe-col-right {
+  min-width: 0;
+}
+
+.trailer-wrapper {
+  position: relative;
+  padding-bottom: 56.25%;
+  height: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+.trailer-wrapper iframe {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  border: none;
+}
+
+.streaming-box {
+  margin-top: 1.25rem;
+  padding: 0.9rem 1rem;
+  background: rgba(255,255,255,0.03);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.streaming-logos {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.streaming-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 50px;
+}
+
+.streaming-item img {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.streaming-item span {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.section-label {
+  font-size: 0.85rem;
+  color: #ff4b2b;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   LAYOUT DESKTOP FULL-WIDTH — INDEX (resultado de busca)
+══════════════════════════════════════════════════════════════════════════════ */
+
+.busca-resultado-grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 2rem;
+  align-items: flex-start;
+  margin-top: 1.5rem;
+}
+
+.busca-col-info {
+  min-width: 0;
+}
+
+.busca-poster {
+  width: 130px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+.busca-poster-placeholder {
+  width: 130px;
+  height: 190px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+}
+
+.busca-col-sugestoes {
+  position: sticky;
+  top: 76px;
+}
+
+.sugestoes-titulo {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+/* ── RESPONSIVO ─────────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .detalhe-grid {
+    grid-template-columns: 1fr;
+  }
+  .detalhe-col-left {
+    position: static;
+  }
+  .detalhe-poster-full {
+    max-width: 260px;
+    margin: 0 auto;
+  }
+  .busca-resultado-grid {
+    grid-template-columns: 1fr;
+  }
+  .busca-col-sugestoes {
+    position: static;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ELENCO E DIREÇÃO
+══════════════════════════════════════════════════════════════════════════════ */
+
+.creditos-box {
+  padding: 0.9rem 1rem;
+  background: rgba(255,255,255,0.03);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+/* ── Diretor ── */
+.diretores-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.diretor-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.credito-foto {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+  flex-shrink: 0;
+}
+
+.credito-sem-foto {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  font-size: 1.1rem;
+}
+
+.credito-nome {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ── Elenco ── */
+.elenco-scroll {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.elenco-scroll::-webkit-scrollbar { height: 4px; }
+.elenco-scroll::-webkit-scrollbar-track { background: transparent; }
+.elenco-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.ator-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  width: 86px;
+  text-align: center;
+}
+
+.ator-foto {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: top;
+  border: 2px solid var(--border);
+  transition: border-color 0.2s;
+}
+
+.ator-card:hover .ator-foto {
+  border-color: var(--accent);
+}
+
+.ator-sem-foto {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  font-size: 1.6rem;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+}
+
+.ator-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ator-nome {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.ator-personagem {
+  font-size: 0.67rem;
+  color: var(--text-muted);
+  line-height: 1.2;
 }
