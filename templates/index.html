@@ -25,11 +25,11 @@
 
     <div class="category-chips" style="margin-top: 1.5rem; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
       <span style="color: var(--text-muted); font-size: 0.9rem; width: 100%; text-align: center; margin-bottom: 5px;">Ou navegue por categoria:</span>
-      <a href="{{ url_for('filmes_por_genero', nome_genero='Action') }}" class="btn btn-outline btn-sm">💥 Ação</a>
-      <a href="{{ url_for('filmes_por_genero', nome_genero='Comedy') }}" class="btn btn-outline btn-sm">😂 Comédia</a>
-      <a href="{{ url_for('filmes_por_genero', nome_genero='Horror') }}" class="btn btn-outline btn-sm">👻 Terror</a>
-      <a href="{{ url_for('filmes_por_genero', nome_genero='Romance') }}" class="btn btn-outline btn-sm">❤️ Romance</a>
-      <a href="{{ url_for('filmes_por_genero', nome_genero='Sci-Fi') }}" class="btn btn-outline btn-sm">🚀 Ficção</a>
+      <a href="{{ url_for('filmes_por_genero', nome_genero='Action') }}" class="btn btn-outline btn-sm">Ação</a>
+      <a href="{{ url_for('filmes_por_genero', nome_genero='Comedy') }}" class="btn btn-outline btn-sm">Comédia</a>
+      <a href="{{ url_for('filmes_por_genero', nome_genero='Horror') }}" class="btn btn-outline btn-sm">Terror</a>
+      <a href="{{ url_for('filmes_por_genero', nome_genero='Romance') }}" class="btn btn-outline btn-sm">Romance</a>
+      <a href="{{ url_for('filmes_por_genero', nome_genero='Sci-Fi') }}" class="btn btn-outline btn-sm">Ficção</a>
     </div>
   </div>
 
@@ -50,7 +50,7 @@
             {% if poster_principal %}
               <img src="{{ poster_principal }}" class="busca-poster" alt="{{ filme_escolhido }}">
             {% else %}
-              <div class="busca-poster-placeholder">🎬</div>
+              <div class="busca-poster-placeholder"></div>
             {% endif %}
 
             <div style="flex:1;min-width:0">
@@ -58,7 +58,7 @@
                 <h2 style="font-size:1.4rem;margin:0">{{ filme_escolhido }}</h2>
                 <a href="{{ url_for('detalhes', nome_filme=filme_escolhido) }}"
                    class="btn btn-outline btn-sm" style="white-space:nowrap;flex-shrink:0">
-                  Ver detalhes completos →
+                  Ver detalhes
                 </a>
               </div>
 
@@ -79,7 +79,7 @@
             <p style="font-size:0.95rem;line-height:1.6;color:#ccc;margin-bottom:1rem">{{ resumo_principal }}</p>
 
             {% if streamings_principal %}
-              <p class="section-label">📺 Onde assistir:</p>
+              <p class="section-label">\Onde assistir:</p>
               <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem">
                 {% for s in streamings_principal %}
                   <img src="{{ s.logo }}" title="{{ s.nome }}" alt="{{ s.nome }}"
@@ -110,7 +110,7 @@
                         class="star-btn {% if nota_filme_pesquisado and nota_filme_pesquisado|int == n %}selected{% endif %}"
                         data-nota="{{ n }}"
                         onclick="selecionarNotaPesquisado({{ n }})">
-                        {{ n }} ★
+                        {{ n }}
                       </button>
                     {% endfor %}
                     <button type="submit" class="btn btn-primary btn-sm"
@@ -126,7 +126,7 @@
           {% if trailer_key_principal %}
           <div style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.25rem">
             <p class="section-label" style="margin-bottom:0.6rem">
-              🎬 Trailer
+              Trailer
               <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400">(dublado quando disponível)</span>
             </p>
             <div class="trailer-wrapper">
@@ -155,7 +155,7 @@
                 {% if item.poster %}
                   <img src="{{ item.poster }}" class="rec-item-poster" alt="{{ item.titulo }}">
                 {% else %}
-                  <span class="rec-item-poster-placeholder">🎬</span>
+                  <span class="rec-item-poster-placeholder"></span>
                 {% endif %}
                 <span class="rec-title">
                   {{ item.titulo_ptbr if item.titulo_ptbr else item.titulo }}
@@ -179,7 +179,7 @@
 
     {% if filmes_destaque %}
       <h3 style="font-size:1rem;margin:1.5rem 0 1rem;color:var(--text-muted)">
-        🔥 Populares no VILU
+        Populares no VILU
       </h3>
       <div class="destaque-grid">
         {% for f in filmes_destaque %}
@@ -190,7 +190,7 @@
                    alt="{{ f.titulo }}"
                    class="destaque-poster">
             {% else %}
-              <div class="destaque-poster destaque-placeholder">🎬</div>
+              <div class="destaque-poster destaque-placeholder"></div>
             {% endif %}
             <div class="destaque-info">
               <span class="destaque-titulo">{{ f.titulo_ptbr if f.titulo_ptbr else f.titulo }}</span>

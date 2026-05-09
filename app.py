@@ -1,24 +1,11 @@
-# app.py — Servidor principal do VILU (projeto acadêmico)
-#
-# Rotas:
-#   /              → Busca e recomendações (primeira tela pós-login)
-#   /principal     → Comunidade: feed + busca rápida
-#   /buscar_filmes → Autocomplete de títulos em JSON (chamado pelo JS)
-#   /genero/<g>    → Lista filmes populares de um gênero específico
-#   /detalhes/<f>  → Detalhes: XAI, avaliação privada, comentários
-#   /avaliar       → Salva avaliação privada (POST)
-#   /comentar      → Publica comentário no feed (POST)
-#   /excluir_comentario/<id> → Remove comentário próprio (POST)
-#   /perfil        → Histórico do usuário logado
-#   /usuario/<id>  → Perfil público de outro usuário
-
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+import os
+import re
+import requests
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor
-import requests, re, os
 
-# Carrega variáveis de ambiente do arquivo .env (se existir)
-# Instalar suporte: pip install python-dotenv
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -30,204 +17,158 @@ from auth import auth as auth_blueprint
 from sistema_xai import (
     recomendar_hibrido, filmes, dados_completos,
     _generos_idx, buscar_historico_usuario,
-    _historico_relevante, contagem_votos
+    _historico_relevante, contagem_votos,
+    atualizar_matriz
 )
 
-
-# ── INICIALIZAÇÃO ─────────────────────────────────────────────────────────────
-
 app = Flask(__name__)
-app.secret_key  = os.getenv('SECRET_KEY', 'vilu-chave-secreta-troque-em-producao-2024')
+app.secret_key = os.getenv('SECRET_KEY', 'vilu-dev-key-2024')
 app.register_blueprint(auth_blueprint)
 criar_tabelas()
 
-TMDB_API_KEY = os.getenv('TMDB_API_KEY', '417fbe5b98d6a5a1daff00dfc9a77915')
+TMDB_KEY    = os.getenv('TMDB_API_KEY', '417fbe5b98d6a5a1daff00dfc9a77915')
+_tmdb_cache = {}
 
-# Cache título → (sinopse, poster_url, titulo_ptbr, streamings, trailer_key, elenco, diretores)
-# Evita chamadas repetidas ao TMDB para o mesmo filme
-_cache_tmdb = {}
-
-
-# ── DECORATOR ────────────────────────────────────────────────────────────────
 
 def login_required(f):
-    """Protege uma rota: redireciona para /login se não estiver autenticado."""
     @wraps(f)
-    def decorated(*args, **kwargs):
+    def check(*args, **kwargs):
         if 'user_id' not in session:
             return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
-    return decorated
+    return check
 
 
 # ── TMDB ──────────────────────────────────────────────────────────────────────
 
-def buscar_info_tmdb(titulo_movielens):
-    """
-    Busca sinopse, pôster, título PT-BR, streamings, trailer e créditos no TMDB.
-    Remove o ano antes de buscar: 'Toy Story (1995)' → 'Toy Story'.
-    Retorna: (sinopse, poster_url, titulo_ptbr, streamings, trailer_key, elenco, diretores)
-    Resultado salvo no cache — sem repetição de requisições HTTP.
-    """
-    if titulo_movielens in _cache_tmdb:
-        return _cache_tmdb[titulo_movielens]
-
-    titulo_limpo = re.sub(r'\s*\(\d{4}\)', '', titulo_movielens).strip()
-    
-    # NOVO: Remove partes com "(a.k.a. ...)" para o TMDB achar o pôster (Ex: Seven, Independence Day)
-    titulo_limpo = re.sub(r'\s*\(a\.k\.a\..*?\)', '', titulo_limpo, flags=re.IGNORECASE).strip()
-    
-    # Tratamento para nomes como "Matrix, The" -> "The Matrix"
-    if ', The' in titulo_limpo:
-        titulo_limpo = 'The ' + titulo_limpo.replace(', The', '')
-    elif ', A' in titulo_limpo:
-        titulo_limpo = 'A ' + titulo_limpo.replace(', A', '')
-
-    params = {'api_key': TMDB_API_KEY, 'query': titulo_limpo, 'language': 'pt-BR'}
-
+def _tmdb_get(path, params=None, timeout=4):
+    """Wrapper simples para chamadas à API do TMDB."""
+    base = {'api_key': TMDB_KEY, 'language': 'pt-BR'}
+    if params:
+        base.update(params)
     try:
-        resp = requests.get(
-            'https://api.themoviedb.org/3/search/movie',
-            params=params, timeout=5
-        )
-        if resp.status_code == 401:
-            result = ('Chave da API TMDB inválida.', None, None, [], None, [], [])
-        else:
-            resultados = resp.json().get('results', [])
-            if resultados:
-                item    = resultados[0]
-                m_id    = item.get('id')
-                sinopse = item.get('overview') or 'Sinopse não disponível em português.'
-                path    = item.get('poster_path')
-                
-                # BUSCA DE STREAMINGS (Watch Providers)
-                streamings = []
-                if m_id:
-                    url_p = f"https://api.themoviedb.org/3/movie/{m_id}/watch/providers"
-                    r_p = requests.get(url_p, params={'api_key': TMDB_API_KEY}, timeout=3).json()
-                    # Filtra apenas streamings pagos (flatrate) no Brasil (BR)
-                    br_p = r_p.get('results', {}).get('BR', {}).get('flatrate', [])
-                    for p in br_p:
-                        streamings.append({
-                            'nome': p.get('provider_name'),
-                            'logo': f"https://image.tmdb.org/t/p/original{p.get('logo_path')}"
-                        })
+        return requests.get(f'https://api.themoviedb.org/3{path}', params=base, timeout=timeout).json()
+    except Exception:
+        return {}
 
-                # BUSCA DE TRAILER (prioriza PT-BR dublado, depois EN)
-                trailer_key = None
-                if m_id:
-                    # Tenta primeiro vídeos em PT-BR (dublado)
-                    url_v = f"https://api.themoviedb.org/3/movie/{m_id}/videos"
-                    for lang in ['pt-BR', 'en-US']:
-                        r_v = requests.get(url_v, params={'api_key': TMDB_API_KEY, 'language': lang}, timeout=3).json()
-                        videos = r_v.get('results', [])
-                        # Prefere Trailer, aceita Teaser como fallback
-                        for tipo in ['Trailer', 'Teaser']:
-                            for v in videos:
-                                if v.get('site') == 'YouTube' and v.get('type') == tipo:
-                                    trailer_key = v.get('key')
-                                    break
-                            if trailer_key:
-                                break
-                        if trailer_key:
-                            break
 
-                # BUSCA DE CRÉDITOS (elenco principal + diretor)
-                elenco    = []
-                diretores = []
-                if m_id:
-                    url_c = f"https://api.themoviedb.org/3/movie/{m_id}/credits"
-                    r_c = requests.get(url_c, params={'api_key': TMDB_API_KEY, 'language': 'pt-BR'}, timeout=3).json()
-                    # Pega os 7 primeiros atores do cast (já vêm ordenados por billing)
-                    for ator in r_c.get('cast', [])[:7]:
-                        foto = ator.get('profile_path')
-                        elenco.append({
-                            'nome':       ator.get('name'),
-                            'personagem': ator.get('character'),
-                            'foto':       f"https://image.tmdb.org/t/p/w185{foto}" if foto else None
-                        })
-                    # Pega diretores do crew
-                    for pessoa in r_c.get('crew', []):
-                        if pessoa.get('job') == 'Director':
-                            foto = pessoa.get('profile_path')
-                            diretores.append({
-                                'nome': pessoa.get('name'),
-                                'foto': f"https://image.tmdb.org/t/p/w185{foto}" if foto else None
-                            })
+def buscar_info_tmdb(titulo_movielens):
+    if titulo_movielens in _tmdb_cache:
+        return _tmdb_cache[titulo_movielens]
 
-                result  = (
-                    sinopse,
-                    f'https://image.tmdb.org/t/p/w500{path}' if path else None,
-                    item.get('title') or None,
-                    streamings,
-                    trailer_key,
-                    elenco,
-                    diretores
-                )
-            else:
-                result = ('Sinopse não disponível.', None, None, [], None, [], [])
-    except requests.exceptions.Timeout:
-        result = ('Tempo de conexão esgotado.', None, None, [], None, [], [])
-    except Exception as e:
-        print(f'Erro TMDB: {e}')
+    # Limpa o título antes de buscar: remove ano, a.k.a., e inverte "Matrix, The"
+    t = re.sub(r'\s*\(\d{4}\)', '', titulo_movielens).strip()
+    t = re.sub(r'\s*\(a\.k\.a\..*?\)', '', t, flags=re.IGNORECASE).strip()
+    if ', The' in t:
+        t = 'The ' + t.replace(', The', '')
+    elif ', A ' in t:
+        t = 'A ' + t.replace(', A ', ' ')
+
+    dados = _tmdb_get('/search/movie', {'query': t})
+    resultados = dados.get('results', [])
+
+    if not resultados:
         result = ('Sinopse não disponível.', None, None, [], None, [], [])
+        _tmdb_cache[titulo_movielens] = result
+        return result
 
-    _cache_tmdb[titulo_movielens] = result
+    item  = resultados[0]
+    mid   = item.get('id')
+    thumb = item.get('poster_path')
+
+    sinopse    = item.get('overview') or 'Sinopse não disponível em português.'
+    poster_url = f'https://image.tmdb.org/t/p/w500{thumb}' if thumb else None
+    titulo_ptbr = item.get('title')
+
+    # Streamings disponíveis no Brasil
+    streamings = []
+    if mid:
+        wp = _tmdb_get(f'/movie/{mid}/watch/providers', {})
+        for p in wp.get('results', {}).get('BR', {}).get('flatrate', []):
+            streamings.append({
+                'nome': p.get('provider_name'),
+                'logo': f"https://image.tmdb.org/t/p/original{p.get('logo_path')}"
+            })
+
+    # Trailer — tenta PT-BR primeiro, cai para EN
+    trailer_key = None
+    if mid:
+        for lang in ['pt-BR', 'en-US']:
+            videos = _tmdb_get(f'/movie/{mid}/videos', {'language': lang}).get('results', [])
+            for tipo in ['Trailer', 'Teaser']:
+                match = next((v for v in videos if v.get('site') == 'YouTube' and v.get('type') == tipo), None)
+                if match:
+                    trailer_key = match['key']
+                    break
+            if trailer_key:
+                break
+
+    # Elenco e direção
+    elenco, diretores = [], []
+    if mid:
+        creditos = _tmdb_get(f'/movie/{mid}/credits')
+        for ator in creditos.get('cast', [])[:7]:
+            foto = ator.get('profile_path')
+            elenco.append({
+                'nome':       ator.get('name'),
+                'personagem': ator.get('character'),
+                'foto':       f'https://image.tmdb.org/t/p/w185{foto}' if foto else None
+            })
+        diretores = [
+            {
+                'nome': p.get('name'),
+                'foto': f"https://image.tmdb.org/t/p/w185{p['profile_path']}" if p.get('profile_path') else None
+            }
+            for p in creditos.get('crew', []) if p.get('job') == 'Director'
+        ]
+
+    result = (sinopse, poster_url, titulo_ptbr, streamings, trailer_key, elenco, diretores)
+    _tmdb_cache[titulo_movielens] = result
     return result
 
 
-# ── GRADE DE FILMES POPULARES (pré-carregada) ─────────────────────────────────
-# Executada uma única vez ao iniciar o servidor, após buscar_info_tmdb definida.
-# ThreadPoolExecutor paraleliza as 18 chamadas TMDB (~1-2s vs ~18s sequencial).
-
-def _montar_destaque(titulo):
-    """Monta o dicionário de um filme para a grade de populares."""
-    _, poster, ptbr, _, _, _, _ = buscar_info_tmdb(titulo)
-    busca_f = filmes[filmes['title'] == titulo]
-    generos = busca_f.iloc[0]['genres'].split('|')[:2] if len(busca_f) > 0 else []
+# Grade dos 18 filmes mais populares — montada uma vez na inicialização
+def _montar_card(titulo):
+    _, poster, ptbr, *_ = buscar_info_tmdb(titulo)
+    row     = filmes[filmes['title'] == titulo]
+    generos = row.iloc[0]['genres'].split('|')[:2] if not row.empty else []
     return {'titulo': titulo, 'titulo_ptbr': ptbr, 'poster': poster, 'generos': generos}
 
-print("Pré-carregando grade de filmes populares...")
-_top = contagem_votos.sort_values(ascending=False).head(18).index.tolist()
-with ThreadPoolExecutor(max_workers=18) as _ex:
-    _FILMES_DESTAQUE = list(_ex.map(_montar_destaque, _top))
-print(f"Grade pronta: {len(_FILMES_DESTAQUE)} filmes.")
+print('Carregando grade de filmes populares...')
+_top_titulos     = contagem_votos.sort_values(ascending=False).head(18).index.tolist()
+with ThreadPoolExecutor(max_workers=18) as pool:
+    _GRADE_POPULARES = list(pool.map(_montar_card, _top_titulos))
+print('Pronto.')
 
 
-# ── XAI DE REFORÇO ────────────────────────────────────────────────────────────
-
-def gerar_xai_detalhe(nome_filme, nota_usuario, user_id=None):
-    """
-    Texto XAI exibido na página de detalhes, próximo à sinopse.
-    Cita filmes do histórico com ao menos 2 gêneros em comum (com tom informal).
-    """
-    generos_set = _generos_idx.get(nome_filme, set())
-    generos_str = ', '.join(sorted(generos_set)) if generos_set else 'variados'
-    xai         = f"Esse filme tem tudo a ver com {generos_str}. "
+def xai_detalhe(nome_filme, nota_usuario, user_id=None):
+    """Texto de reforço XAI exibido na página de detalhes do filme."""
+    generos = _generos_idx.get(nome_filme, set())
+    gen_str = ', '.join(sorted(generos)) if generos else 'variados'
+    texto   = f'Esse filme tem tudo a ver com {gen_str}. '
 
     if user_id:
-        historico  = buscar_historico_usuario(user_id)
-        relevantes = _historico_relevante(historico, nome_filme)
-        if relevantes:
-            nomes = ' e '.join([h['titulo'] for h in relevantes])
-            xai  += f"Como você curtiu muito {nomes}, o VILU sacou que esse estilo é a sua cara!"
+        hist = buscar_historico_usuario(user_id)
+        rel  = _historico_relevante(hist, nome_filme)
+        if rel:
+            nomes  = ' e '.join(h['titulo'] for h in rel)
+            texto += f'Como você curtiu {nomes}, o VILU achou que esse estilo combina com você.'
         else:
-            xai  += "Pelo que a galera que usa o VILU anda assistindo, esse aqui é uma ótima aposta pro seu perfil."
+            texto += 'Pelo perfil da comunidade aqui, é uma boa aposta pro seu gosto.'
     else:
-        xai += "A comunidade do VILU tá avaliando muito bem esse aqui, acho que você vai gostar!"
+        texto += 'A comunidade tá avaliando muito bem.'
 
     if nota_usuario:
-        xai += f" Você já deu nota {nota_usuario} pra ele — isso ajuda o VILU a te conhecer melhor!"
+        texto += f' Você já deu {nota_usuario} estrelas — isso ajuda o VILU a te conhecer melhor.'
 
-    return xai
+    return texto
 
 
-# ── ROTA: AUTOCOMPLETE ────────────────────────────────────────────────────────
+# ── rotas ─────────────────────────────────────────────────────────────────────
 
 @app.route('/buscar_filmes')
 @login_required
 def buscar_filmes():
-    """Retorna até 8 títulos que contêm o texto digitado. Usado pelo JS do autocomplete."""
     q = request.args.get('q', '').strip()
     if len(q) < 2:
         return jsonify([])
@@ -237,91 +178,72 @@ def buscar_filmes():
     )
 
 
-# ── ROTA: HOME ────────────────────────────────────────────────────────────────
-
 @app.route('/', methods=['GET', 'POST'])
 @login_required
 def home():
-    """
-    GET  → exibe a grade de filmes populares pré-carregada.
-    POST → executa o motor de recomendação e exibe os resultados.
-    """
-    recomendacoes    = []
-    explicacao       = ''
+    recs             = []
+    xai              = ''
     filme_escolhido  = ''
     poster_principal = None
-    resumo_principal = ''
-    streamings_principal = []
-    trailer_key_principal = None
+    resumo           = ''
+    streamings       = []
+    trailer          = None
     modo = erro      = ''
 
     if request.method == 'POST':
-        nome_digitado    = request.form.get('nome_filme', '').strip()
-        user_id          = session.get('user_id')
-        user_nome_sessao = session.get('user_nome', '')
+        nome     = request.form.get('nome_filme', '').strip()
+        uid      = session.get('user_id')
+        unome    = session.get('user_nome', '')
 
-        titulo_completo, recomendacoes, explicacao_orig, modo, erro = \
-            recomendar_hibrido(nome_digitado, user_id, user_nome_sessao)
+        filme_escolhido, recs, xai, modo, erro = recomendar_hibrido(nome, uid, unome)
 
-        if titulo_completo:
-            filme_escolhido        = titulo_completo
-            resumo_principal, poster_principal, _, streamings_principal, trailer_key_principal, _, _ = buscar_info_tmdb(titulo_completo)
-            
-            # Deixando a explicação da HOME mais informal e amigável
-            if modo == 'colaborativo':
-                explicacao = f"Oi, {user_nome_sessao}! Notei que quem gosta de '{filme_escolhido}' também pirou nessas sugestões abaixo. Como você curte esse estilo, separei o que tem de melhor!"
-            else:
-                explicacao = f"Baseado no que esse filme tem de bom, o VILU selecionou essas outras opções que seguem a mesma pegada pra você dar o play!"
+        if filme_escolhido:
+            resumo, poster_principal, _, streamings, trailer, *_ = buscar_info_tmdb(filme_escolhido)
 
-    # Busca pôsteres das recomendações em paralelo
-    def _enriquecer(rec):
-        _, poster, ptbr, _, _, _, _ = buscar_info_tmdb(rec['titulo'])
+    def _com_poster(rec):
+        _, poster, ptbr, *_ = buscar_info_tmdb(rec['titulo'])
         return {**rec, 'poster': poster, 'titulo_ptbr': ptbr}
 
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        recomendacoes_com_poster = list(ex.map(_enriquecer, recomendacoes))
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        recs_enriquecidas = list(pool.map(_com_poster, recs))
 
-    # Verifica se o usuário já avaliou o filme pesquisado
-    nota_filme_pesquisado = None
-    movie_id_pesquisado   = None
+    nota_atual    = None
+    movie_id_atual = None
     if filme_escolhido:
-        b = filmes[filmes['title'] == filme_escolhido]
-        if len(b) > 0:
-            movie_id_pesquisado = int(b.iloc[0]['movieId'])
+        row_filme = filmes[filmes['title'] == filme_escolhido]
+        if not row_filme.empty:
+            movie_id_atual = int(row_filme.iloc[0]['movieId'])
             db  = get_db()
             row = db.execute(
                 'SELECT nota FROM avaliacoes WHERE user_id = ? AND movie_id = ?',
-                (session.get('user_id'), movie_id_pesquisado)
+                (session.get('user_id'), movie_id_atual)
             ).fetchone()
             db.close()
             if row:
-                nota_filme_pesquisado = row['nota']
+                nota_atual = row['nota']
 
     return render_template('index.html',
         filme_escolhido       = filme_escolhido,
-        lista_recomendacoes   = recomendacoes_com_poster,
-        explicacao            = explicacao,
-        resumo_principal      = resumo_principal,
-        streamings_principal  = streamings_principal,
-        trailer_key_principal = trailer_key_principal,
+        lista_recomendacoes   = recs_enriquecidas,
+        explicacao            = xai,
+        resumo_principal      = resumo,
+        streamings_principal  = streamings,
+        trailer_key_principal = trailer,
         modo                  = modo,
         erro                  = erro,
         poster_principal      = poster_principal,
-        movie_id_pesquisado   = movie_id_pesquisado,
-        nota_filme_pesquisado = nota_filme_pesquisado,
-        filmes_destaque       = _FILMES_DESTAQUE,
+        movie_id_pesquisado   = movie_id_atual,
+        nota_filme_pesquisado = nota_atual,
+        filmes_destaque       = _GRADE_POPULARES,
         user_nome             = session.get('user_nome', '')
     )
 
 
-# ── ROTA: PRINCIPAL (comunidade) ─────────────────────────────────────────────
-
 @app.route('/principal')
 @login_required
 def principal():
-    """Feed da comunidade com pôsteres buscados em paralelo."""
-    db        = get_db()
-    posts_raw = db.execute("""
+    db   = get_db()
+    rows = db.execute("""
         SELECT c.id, c.comentario, c.nota, c.titulo, c.movie_id, c.data,
                u.nome AS autor, u.id AS autor_id
         FROM comentarios c
@@ -330,12 +252,12 @@ def principal():
     """).fetchall()
     db.close()
 
-    def _enriquecer_post(p):
-        _, poster, _, _, _, _, _ = buscar_info_tmdb(p['titulo'])
+    def _com_poster(p):
+        _, poster, *_ = buscar_info_tmdb(p['titulo'])
         return {**dict(p), 'poster_url': poster}
 
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        posts = list(ex.map(_enriquecer_post, posts_raw))
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        posts = list(pool.map(_com_poster, rows))
 
     return render_template('principal.html',
         posts     = posts,
@@ -344,73 +266,60 @@ def principal():
     )
 
 
-# ── ROTA: FILMES POR GÊNERO ───────────────────────────────────────────────────
-
 @app.route('/genero/<path:nome_genero>')
 @login_required
 def filmes_por_genero(nome_genero):
-    """
-    Lista os filmes mais populares de um gênero específico.
-    O gênero é comparado com a coluna 'genres' do MovieLens (ex: 'Action|Comedy').
-    """
     mascara = filmes['genres'].str.contains(nome_genero, case=False, na=False)
-    filmes_do_genero = filmes[mascara].copy()
+    subset  = filmes[mascara].copy()
 
-    if filmes_do_genero.empty:
-        return render_template('404.html', mensagem=f'Nenhum filme encontrado para "{nome_genero}".'), 404
+    if subset.empty:
+        return render_template('404.html', mensagem=f'Nenhum filme em "{nome_genero}".'), 404
 
-    # Ordena pelos mais votados (usa contagem_votos do sistema_xai)
-    filmes_do_genero['votos'] = filmes_do_genero['title'].map(contagem_votos).fillna(0)
-    top_filmes = filmes_do_genero.sort_values('votos', ascending=False).head(20)['title'].tolist()
+    subset['votos'] = subset['title'].map(contagem_votos).fillna(0)
+    top = subset.sort_values('votos', ascending=False).head(20)['title'].tolist()
 
-    # Busca pôsteres em paralelo
-    def _enriquecer_genero(titulo):
-        _, poster, ptbr, _, _, _, _ = buscar_info_tmdb(titulo)
-        busca_f = filmes[filmes['title'] == titulo]
-        generos = busca_f.iloc[0]['genres'].split('|')[:2] if len(busca_f) > 0 else []
+    def _card(titulo):
+        _, poster, ptbr, *_ = buscar_info_tmdb(titulo)
+        row     = filmes[filmes['title'] == titulo]
+        generos = row.iloc[0]['genres'].split('|')[:2] if not row.empty else []
         return {'titulo': titulo, 'titulo_ptbr': ptbr, 'poster': poster, 'generos': generos}
 
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        filmes_enriquecidos = list(ex.map(_enriquecer_genero, top_filmes))
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        lista = list(pool.map(_card, top))
 
     return render_template('genero.html',
         genero       = nome_genero,
-        filmes_lista = filmes_enriquecidos,
+        filmes_lista = lista,
         user_nome    = session.get('user_nome', '')
     )
 
 
-# ── ROTA: DETALHES ────────────────────────────────────────────────────────────
-
 @app.route('/detalhes/<path:nome_filme>')
 @login_required
 def detalhes(nome_filme):
-    """Exibe pôster, sinopse, XAI de reforço, avaliação e comentários do filme."""
     busca = filmes[filmes['title'] == nome_filme]
-    if len(busca) == 0:
+    if busca.empty:
         return render_template('404.html', mensagem='Filme não encontrado.'), 404
 
-    dados_filme   = busca.iloc[0]
-    movie_id      = int(dados_filme['movieId'])
-    generos_lista = dados_filme['genres'].split('|')
+    dados     = busca.iloc[0]
+    movie_id  = int(dados['movieId'])
+    generos   = dados['genres'].split('|')
 
     nota_media = '-'
     if nome_filme in dados_completos['title'].values:
         media      = dados_completos[dados_completos['title'] == nome_filme]['rating'].mean()
         nota_media = f'{media:.2f}'
 
-    user_id = session.get('user_id')
-    db      = get_db()
+    uid = session.get('user_id')
+    db  = get_db()
 
-    row          = db.execute(
-        'SELECT nota FROM avaliacoes WHERE user_id = ? AND movie_id = ?',
-        (user_id, movie_id)
+    row_av       = db.execute(
+        'SELECT nota FROM avaliacoes WHERE user_id = ? AND movie_id = ?', (uid, movie_id)
     ).fetchone()
-    nota_usuario = row['nota'] if row else None
+    nota_usuario = row_av['nota'] if row_av else None
 
     comentarios = db.execute("""
-        SELECT c.id, c.comentario, c.nota, c.data,
-               u.nome AS autor, u.id AS autor_id
+        SELECT c.id, c.comentario, c.nota, c.data, u.nome AS autor, u.id AS autor_id
         FROM comentarios c
         JOIN users u ON c.user_id = u.id
         WHERE c.movie_id = ?
@@ -424,7 +333,7 @@ def detalhes(nome_filme):
         titulo       = nome_filme,
         titulo_ptbr  = titulo_ptbr,
         movie_id     = movie_id,
-        generos      = generos_lista,
+        generos      = generos,
         nota_media   = nota_media,
         sinopse      = sinopse,
         poster_url   = poster_url,
@@ -434,18 +343,15 @@ def detalhes(nome_filme):
         diretores    = diretores,
         nota_usuario = nota_usuario,
         comentarios  = comentarios,
-        xai_detalhe  = gerar_xai_detalhe(nome_filme, nota_usuario, user_id),
+        xai_detalhe  = xai_detalhe(nome_filme, nota_usuario, uid),
         user_nome    = session.get('user_nome', ''),
-        user_id      = user_id
+        user_id      = uid
     )
 
-
-# ── ROTA: AVALIAR ─────────────────────────────────────────────────────────────
 
 @app.route('/avaliar', methods=['POST'])
 @login_required
 def avaliar():
-    """Salva ou atualiza a avaliação privada. ON CONFLICT atualiza nota existente."""
     movie_id = request.form.get('movie_id')
     titulo   = request.form.get('titulo')
     nota     = float(request.form.get('nota', 0))
@@ -462,78 +368,65 @@ def avaliar():
     """, (session['user_id'], movie_id, titulo, nota))
     db.commit()
     db.close()
+
+    atualizar_matriz()
     return redirect(url_for('detalhes', nome_filme=titulo))
 
-
-# ── ROTA: COMENTAR ────────────────────────────────────────────────────────────
 
 @app.route('/comentar', methods=['POST'])
 @login_required
 def comentar():
-    """Publica comentário no feed. Nota herdada da avaliação privada já salva."""
     movie_id   = request.form.get('movie_id')
     titulo     = request.form.get('titulo')
-    comentario = request.form.get('comentario', '').strip()
-    user_id    = session['user_id']
+    texto      = request.form.get('comentario', '').strip()
+    uid        = session['user_id']
 
-    if not comentario or not 3 <= len(comentario) <= 500:
+    if not texto or not 3 <= len(texto) <= 500:
         return redirect(url_for('detalhes', nome_filme=titulo))
 
     db  = get_db()
     row = db.execute(
-        'SELECT nota FROM avaliacoes WHERE user_id = ? AND movie_id = ?',
-        (user_id, movie_id)
+        'SELECT nota FROM avaliacoes WHERE user_id = ? AND movie_id = ?', (uid, movie_id)
     ).fetchone()
 
-    db.execute("""
-        INSERT INTO comentarios (user_id, movie_id, titulo, nota, comentario)
-        VALUES (?, ?, ?, ?, ?)
-    """, (user_id, movie_id, titulo, row['nota'] if row else None, comentario))
+    db.execute(
+        'INSERT INTO comentarios (user_id, movie_id, titulo, nota, comentario) VALUES (?, ?, ?, ?, ?)',
+        (uid, movie_id, titulo, row['nota'] if row else None, texto)
+    )
     db.commit()
     db.close()
     return redirect(url_for('detalhes', nome_filme=titulo))
 
 
-# ── ROTA: EXCLUIR COMENTÁRIO ──────────────────────────────────────────────────
-
-@app.route('/excluir_comentario/<int:comentario_id>', methods=['POST'])
+@app.route('/excluir_comentario/<int:cid>', methods=['POST'])
 @login_required
-def excluir_comentario(comentario_id):
-    """Remove comentário após verificar que pertence ao usuário logado."""
+def excluir_comentario(cid):
     db  = get_db()
-    com = db.execute(
-        'SELECT titulo, user_id FROM comentarios WHERE id = ?',
-        (comentario_id,)
-    ).fetchone()
+    com = db.execute('SELECT titulo, user_id FROM comentarios WHERE id = ?', (cid,)).fetchone()
 
     titulo = ''
     if com and com['user_id'] == session['user_id']:
-        db.execute('DELETE FROM comentarios WHERE id = ?', (comentario_id,))
+        db.execute('DELETE FROM comentarios WHERE id = ?', (cid,))
         db.commit()
         titulo = com['titulo']
     db.close()
 
-    return redirect(
-        url_for('detalhes', nome_filme=titulo) if titulo else url_for('principal')
-    )
+    return redirect(url_for('detalhes', nome_filme=titulo) if titulo else url_for('principal'))
 
-
-# ── ROTA: PERFIL ──────────────────────────────────────────────────────────────
 
 @app.route('/perfil')
 @login_required
 def perfil():
-    """Exibe avaliações privadas e publicações no feed do usuário logado."""
-    user_id = session['user_id']
-    db      = get_db()
+    uid = session['user_id']
+    db  = get_db()
 
     avaliacoes  = db.execute(
         'SELECT titulo, movie_id, nota, data FROM avaliacoes WHERE user_id = ? ORDER BY data DESC',
-        (user_id,)
+        (uid,)
     ).fetchall()
     comentarios = db.execute(
         'SELECT id, titulo, nota, comentario, data FROM comentarios WHERE user_id = ? ORDER BY data DESC',
-        (user_id,)
+        (uid,)
     ).fetchall()
     db.close()
 
@@ -541,20 +434,15 @@ def perfil():
         avaliacoes  = avaliacoes,
         comentarios = comentarios,
         user_nome   = session.get('user_nome', ''),
-        user_id     = user_id
+        user_id     = uid
     )
 
-
-# ── ROTA: PERFIL PÚBLICO ──────────────────────────────────────────────────────
 
 @app.route('/usuario/<int:uid>')
 @login_required
 def usuario_publico(uid):
-    """Exibe o perfil público e publicações de outro usuário."""
     db      = get_db()
-    usuario = db.execute(
-        'SELECT id, nome, criado_em FROM users WHERE id = ?', (uid,)
-    ).fetchone()
+    usuario = db.execute('SELECT id, nome, criado_em FROM users WHERE id = ?', (uid,)).fetchone()
 
     if not usuario:
         return render_template('404.html', mensagem='Usuário não encontrado.'), 404
@@ -573,10 +461,8 @@ def usuario_publico(uid):
     )
 
 
-# ── ERRO 404 ──────────────────────────────────────────────────────────────────
-
 @app.errorhandler(404)
-def pagina_nao_encontrada(e):
+def not_found(e):
     return render_template('404.html', mensagem='Página não encontrada.'), 404
 
 

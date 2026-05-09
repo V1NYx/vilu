@@ -6,7 +6,7 @@
 
   <a href="#" onclick="history.back(); return false;"
      class="btn btn-outline btn-sm" style="margin-bottom:1.5rem">
-    ← Voltar
+    Voltar
   </a>
 
   <!-- LAYOUT PRINCIPAL: 2 COLUNAS -->
@@ -18,7 +18,7 @@
       {% if poster_url %}
         <img src="{{ poster_url }}" class="detalhe-poster-full" alt="Pôster de {{ titulo }}">
       {% else %}
-        <div class="detalhe-poster-placeholder-full">🎬</div>
+        <div class="detalhe-poster-placeholder-full"></div>
       {% endif %}
 
       <!-- título, gêneros, nota -->
@@ -39,7 +39,7 @@
         </div>
 
         <div class="nota-media" style="margin-top:0.75rem">
-          ★ {{ nota_media }} / 5.0
+          {{ nota_media }} / 5.0
           <span style="font-size:0.8rem;color:var(--text-muted);font-weight:400">— média MovieLens</span>
         </div>
 
@@ -47,14 +47,14 @@
 
         {% if diretores %}
         <div class="creditos-box" style="margin-top:1.25rem">
-          <p class="section-label" style="margin-bottom:0.6rem">🎬 Direção</p>
+          <p class="section-label" style="margin-bottom:0.6rem">Direção</p>
           <div class="diretores-row">
             {% for d in diretores %}
             <div class="diretor-item">
               {% if d.foto %}
                 <img src="{{ d.foto }}" alt="{{ d.nome }}" class="credito-foto">
               {% else %}
-                <div class="credito-foto credito-sem-foto">🎬</div>
+                <div class="credito-foto credito-sem-foto"></div>
               {% endif %}
               <span class="credito-nome">{{ d.nome }}</span>
             </div>
@@ -65,14 +65,14 @@
 
         {% if elenco %}
         <div class="creditos-box" style="margin-top:1rem">
-          <p class="section-label" style="margin-bottom:0.6rem">🎭 Elenco principal</p>
+          <p class="section-label" style="margin-bottom:0.6rem">Elenco principal</p>
           <div class="elenco-scroll">
             {% for a in elenco %}
             <div class="ator-card">
               {% if a.foto %}
                 <img src="{{ a.foto }}" alt="{{ a.nome }}" class="ator-foto">
               {% else %}
-                <div class="ator-foto ator-sem-foto">👤</div>
+                <div class="ator-foto ator-sem-foto"></div>
               {% endif %}
               <div class="ator-info">
                 <span class="ator-nome">{{ a.nome }}</span>
@@ -86,7 +86,7 @@
 
         {% if streamings %}
         <div class="streaming-box">
-          <p class="section-label">📺 Disponível em (Brasil):</p>
+          <p class="section-label">Disponível em (Brasil):</p>
           <div class="streaming-logos">
             {% for s in streamings %}
               <div class="streaming-item">
@@ -128,7 +128,7 @@
                   class="star-btn {% if nota_usuario and nota_usuario|int == n %}selected{% endif %}"
                   data-nota="{{ n }}"
                   onclick="selecionarNota({{ n }})">
-                  {{ n }} ★
+                  {{ n }}
                 </button>
               {% endfor %}
               <button type="submit" class="btn btn-primary btn-sm"
@@ -147,7 +147,7 @@
       {% if trailer_key %}
       <div class="card" style="padding:1.25rem">
         <p class="section-label" style="margin-bottom:0.6rem">
-          🎬 Trailer
+          Trailer
           <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400">(dublado quando disponível)</span>
         </p>
         <div class="trailer-wrapper">
@@ -167,7 +167,7 @@
         {% if nota_usuario %}
           <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">
             Seu comentário será publicado com sua avaliação de
-            <strong style="color:var(--yellow)">{{ nota_usuario }} ★</strong>.
+            <strong style="color:var(--yellow)">{{ nota_usuario }}</strong>.
           </p>
         {% else %}
           <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">
@@ -207,7 +207,7 @@
                 {{ c.autor }}
               </a>
               {% if c.nota %}
-                <span class="post-nota">{{ c.nota }} ★</span>
+                <span class="post-nota">{{ c.nota }}</span>
               {% endif %}
               <span class="post-data">{{ c.data[:10] }}</span>
             </div>
@@ -218,7 +218,7 @@
                       action="{{ url_for('excluir_comentario', comentario_id=c.id) }}"
                       style="display:inline"
                       onsubmit="return confirm('Excluir este comentário?')">
-                  <button type="submit" class="btn-excluir">🗑️ Excluir</button>
+                  <button type="submit" class="btn-excluir">Excluir</button>
                 </form>
               </div>
             {% endif %}
@@ -226,7 +226,7 @@
         {% endfor %}
       {% else %}
         <div class="empty-state" style="padding:2rem">
-          <div class="icon">💬</div>
+          <div class="icon"></div>
           <p>Nenhum comentário ainda. Seja o primeiro!</p>
         </div>
       {% endif %}
