@@ -195,7 +195,7 @@
             <div class="destaque-info">
               <span class="destaque-titulo">{{ f.titulo_ptbr if f.titulo_ptbr else f.titulo }}</span>
               <span class="destaque-generos">
-                {{ f.generos | join(' · ') }}
+                {{ f.generos|ptbr | join(' · ') }}
               </span>
             </div>
           </div>

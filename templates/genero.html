@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Filmes de {{ genero }} — VILU{% endblock %}
+{% block title %}Filmes de {{ genero|ptbr }} — VILU{% endblock %}
 
 {% block content %}
 <div class="page">
@@ -10,7 +10,7 @@
   </a>
 
   <div class="search-hero" style="text-align: left; padding: 2rem 0 1rem;">
-    <h1>Explorando: <span style="color: var(--primary);">{{ genero }}</span></h1>
+    <h1>Explorando: <span style="color: var(--primary);">{{ genero|ptbr }}</span></h1>
     <p>Os filmes mais populares dessa categoria no VILU.</p>
   </div>
 
@@ -28,7 +28,7 @@
           <div class="destaque-info">
             <span class="destaque-titulo">{{ f.titulo_ptbr if f.titulo_ptbr else f.titulo }}</span>
             <span class="destaque-generos">
-              {{ f.generos | join(' · ') }}
+              {{ f.generos|ptbr | join(' · ') }}
             </span>
           </div>
         </a>

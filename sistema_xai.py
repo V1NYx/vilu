@@ -3,6 +3,17 @@ import sqlite3
 import pandas as pd
 from database import get_db, DB_PATH
 
+_GENEROS_PT = {
+    'Action':'Ação', 'Adventure':'Aventura', 'Animation':'Animação',
+    'Children':'Infantil', 'Comedy':'Comédia', 'Crime':'Crime',
+    'Documentary':'Documentário', 'Drama':'Drama', 'Fantasy':'Fantasia',
+    'Film-Noir':'Film Noir', 'Horror':'Terror', 'Musical':'Musical',
+    'Mystery':'Mistério', 'Romance':'Romance', 'Sci-Fi':'Ficção Científica',
+    'Thriller':'Suspense', 'War':'Guerra', 'Western':'Faroeste',
+    'Biography':'Biografia', 'History':'História', 'Family':'Família',
+}
+_t = lambda g: _GENEROS_PT.get(g, g)
+
 
 # Carregamento único ao importar — Flask não relê a cada requisição
 filmes          = pd.read_csv('dataset/movies.csv')

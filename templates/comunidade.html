@@ -44,7 +44,7 @@
           </a>
           {% if p.autor_id == user_id %}
             <form method="POST"
-                  action="{{ url_for('excluir_comentario', comentario_id=p.id) }}"
+                  action="{{ url_for('excluir_comentario', cid=p.id) }}"
                   style="display:inline"
                   onsubmit="return confirm('Excluir este post?')">
               <button type="submit" class="btn-excluir">Excluir</button>

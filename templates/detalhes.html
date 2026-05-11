@@ -33,7 +33,7 @@
         </h1>
 
         <div class="generos-row" style="margin-top:0.75rem">
-          {% for g in generos %}
+          {% for g in generos|ptbr %}
             <span class="tag-genero">{{ g }}</span>
           {% endfor %}
         </div>
@@ -215,7 +215,7 @@
             {% if c.autor_id == user_id %}
               <div class="post-actions">
                 <form method="POST"
-                      action="{{ url_for('excluir_comentario', comentario_id=c.id) }}"
+                      action="{{ url_for('excluir_comentario', cid=c.id) }}"
                       style="display:inline"
                       onsubmit="return confirm('Excluir este comentário?')">
                   <button type="submit" class="btn-excluir">Excluir</button>

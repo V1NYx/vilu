@@ -26,6 +26,42 @@ app.secret_key = os.getenv('SECRET_KEY', 'vilu-dev-key-2024')
 app.register_blueprint(auth_blueprint)
 criar_tabelas()
 
+# Tradução dos gêneros do MovieLens (inglês) para português
+_GENEROS_PT = {
+    'Action':           'Ação',
+    'Adventure':        'Aventura',
+    'Animation':        'Animação',
+    'Children':         'Infantil',
+    'Comedy':           'Comédia',
+    'Crime':            'Crime',
+    'Documentary':      'Documentário',
+    'Drama':            'Drama',
+    'Fantasy':          'Fantasia',
+    'Film-Noir':        'Film Noir',
+    'Horror':           'Terror',
+    'Musical':          'Musical',
+    'Mystery':          'Mistério',
+    'Romance':          'Romance',
+    'Sci-Fi':           'Ficção Científica',
+    'Thriller':         'Suspense',
+    'War':              'Guerra',
+    'Western':          'Faroeste',
+    'IMAX':             'IMAX',
+    'Biography':        'Biografia',
+    'History':          'História',
+    'Sport':            'Esporte',
+    'Family':           'Família',
+    'Music':            'Música',
+    '(no genres listed)': 'Sem gênero',
+}
+
+@app.template_filter('ptbr')
+def genero_ptbr(valor):
+    """Filtro Jinja2: traduz um gênero ou lista de gêneros para português."""
+    if isinstance(valor, list):
+        return [_GENEROS_PT.get(g, g) for g in valor]
+    return _GENEROS_PT.get(valor, valor)
+
 TMDB_KEY    = os.getenv('TMDB_API_KEY', '417fbe5b98d6a5a1daff00dfc9a77915')
 _tmdb_cache = {}
 
@@ -52,58 +88,107 @@ def _tmdb_get(path, params=None, timeout=4):
         return {}
 
 
-def buscar_info_tmdb(titulo_movielens):
-    if titulo_movielens in _tmdb_cache:
-        return _tmdb_cache[titulo_movielens]
+def _limpar_titulo(titulo):
+    """
+    Limpa o título e extrai o ano para busca precisa no TMDB.
+    Retorna (titulo_limpo, ano) — ex: ('Avatar', '2009').
+    Passar o ano evita que 'Avatar (2009)' retorne Avatar: Fogo e Cinzas (2025).
+    """
+    ano   = None
+    match = re.search(r'\((\d{4})\)', titulo)
+    if match:
+        ano = match.group(1)
 
-    # Limpa o título antes de buscar: remove ano, a.k.a., e inverte "Matrix, The"
-    t = re.sub(r'\s*\(\d{4}\)', '', titulo_movielens).strip()
+    t = re.sub(r'\s*\(\d{4}\)', '', titulo).strip()
     t = re.sub(r'\s*\(a\.k\.a\..*?\)', '', t, flags=re.IGNORECASE).strip()
     if ', The' in t:
         t = 'The ' + t.replace(', The', '')
     elif ', A ' in t:
         t = 'A ' + t.replace(', A ', ' ')
+    return t, ano
 
-    dados = _tmdb_get('/search/movie', {'query': t})
+
+def buscar_poster(titulo_movielens):
+    """
+    Busca rápida: 1 chamada ao TMDB, retorna (poster_url, titulo_ptbr).
+    Usada em listas, grades e feeds onde só precisamos de imagem e título.
+    """
+    cache_key = f'poster:{titulo_movielens}'
+    if cache_key in _tmdb_cache:
+        return _tmdb_cache[cache_key]
+
+    titulo_limpo, ano = _limpar_titulo(titulo_movielens)
+    params = {'query': titulo_limpo}
+    if ano:
+        params['year'] = ano
+    dados = _tmdb_get('/search/movie', params)
+    resultados = dados.get('results', [])
+
+    if not resultados:
+        result = (None, None)
+        _tmdb_cache[cache_key] = result
+        return result
+
+    item   = resultados[0]
+    thumb  = item.get('poster_path')
+    result = (
+        f'https://image.tmdb.org/t/p/w500{thumb}' if thumb else None,
+        item.get('title')
+    )
+    _tmdb_cache[cache_key] = result
+    return result
+
+
+def buscar_info_tmdb(titulo_movielens):
+    """
+    Busca completa: poster + sinopse + streaming + trailer + elenco.
+    Usada apenas na página de detalhes — 3 a 5 chamadas ao TMDB por filme.
+    Resultado fica no cache para não repetir na mesma sessão.
+    """
+    cache_key = f'full:{titulo_movielens}'
+    if cache_key in _tmdb_cache:
+        return _tmdb_cache[cache_key]
+
+    titulo_limpo, ano = _limpar_titulo(titulo_movielens)
+    params = {'query': titulo_limpo}
+    if ano:
+        params['year'] = ano
+    dados = _tmdb_get('/search/movie', params)
     resultados = dados.get('results', [])
 
     if not resultados:
         result = ('Sinopse não disponível.', None, None, [], None, [], [])
-        _tmdb_cache[titulo_movielens] = result
+        _tmdb_cache[cache_key] = result
         return result
 
-    item  = resultados[0]
-    mid   = item.get('id')
-    thumb = item.get('poster_path')
-
-    sinopse    = item.get('overview') or 'Sinopse não disponível em português.'
-    poster_url = f'https://image.tmdb.org/t/p/w500{thumb}' if thumb else None
+    item        = resultados[0]
+    mid         = item.get('id')
+    thumb       = item.get('poster_path')
+    sinopse     = item.get('overview') or 'Sinopse não disponível em português.'
+    poster_url  = f'https://image.tmdb.org/t/p/w500{thumb}' if thumb else None
     titulo_ptbr = item.get('title')
 
-    # Streamings disponíveis no Brasil
     streamings = []
     if mid:
-        wp = _tmdb_get(f'/movie/{mid}/watch/providers', {})
+        wp = _tmdb_get(f'/movie/{mid}/watch/providers')
         for p in wp.get('results', {}).get('BR', {}).get('flatrate', []):
             streamings.append({
                 'nome': p.get('provider_name'),
                 'logo': f"https://image.tmdb.org/t/p/original{p.get('logo_path')}"
             })
 
-    # Trailer — tenta PT-BR primeiro, cai para EN
     trailer_key = None
     if mid:
         for lang in ['pt-BR', 'en-US']:
             videos = _tmdb_get(f'/movie/{mid}/videos', {'language': lang}).get('results', [])
             for tipo in ['Trailer', 'Teaser']:
-                match = next((v for v in videos if v.get('site') == 'YouTube' and v.get('type') == tipo), None)
-                if match:
-                    trailer_key = match['key']
+                v = next((v for v in videos if v.get('site') == 'YouTube' and v.get('type') == tipo), None)
+                if v:
+                    trailer_key = v['key']
                     break
             if trailer_key:
                 break
 
-    # Elenco e direção
     elenco, diretores = [], []
     if mid:
         creditos = _tmdb_get(f'/movie/{mid}/credits')
@@ -123,13 +208,13 @@ def buscar_info_tmdb(titulo_movielens):
         ]
 
     result = (sinopse, poster_url, titulo_ptbr, streamings, trailer_key, elenco, diretores)
-    _tmdb_cache[titulo_movielens] = result
+    _tmdb_cache[cache_key] = result
     return result
 
 
 # Grade dos 18 filmes mais populares — montada uma vez na inicialização
 def _montar_card(titulo):
-    _, poster, ptbr, *_ = buscar_info_tmdb(titulo)
+    poster, ptbr = buscar_poster(titulo)
     row     = filmes[filmes['title'] == titulo]
     generos = row.iloc[0]['genres'].split('|')[:2] if not row.empty else []
     return {'titulo': titulo, 'titulo_ptbr': ptbr, 'poster': poster, 'generos': generos}
@@ -144,7 +229,7 @@ print('Pronto.')
 def xai_detalhe(nome_filme, nota_usuario, user_id=None):
     """Texto de reforço XAI exibido na página de detalhes do filme."""
     generos = _generos_idx.get(nome_filme, set())
-    gen_str = ', '.join(sorted(generos)) if generos else 'variados'
+    gen_str = ', '.join(_GENEROS_PT.get(g, g) for g in sorted(generos)) if generos else 'variados'
     texto   = f'Esse filme tem tudo a ver com {gen_str}. '
 
     if user_id:
@@ -198,10 +283,11 @@ def home():
         filme_escolhido, recs, xai, modo, erro = recomendar_hibrido(nome, uid, unome)
 
         if filme_escolhido:
-            resumo, poster_principal, _, streamings, trailer, *_ = buscar_info_tmdb(filme_escolhido)
+            poster_principal, _ = buscar_poster(filme_escolhido)
+            resumo, _, _, streamings, trailer, *_ = buscar_info_tmdb(filme_escolhido)
 
     def _com_poster(rec):
-        _, poster, ptbr, *_ = buscar_info_tmdb(rec['titulo'])
+        poster, ptbr = buscar_poster(rec['titulo'])
         return {**rec, 'poster': poster, 'titulo_ptbr': ptbr}
 
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -253,7 +339,7 @@ def principal():
     db.close()
 
     def _com_poster(p):
-        _, poster, *_ = buscar_info_tmdb(p['titulo'])
+        poster, _ = buscar_poster(p['titulo'])
         return {**dict(p), 'poster_url': poster}
 
     with ThreadPoolExecutor(max_workers=10) as pool:
@@ -279,7 +365,7 @@ def filmes_por_genero(nome_genero):
     top = subset.sort_values('votos', ascending=False).head(20)['title'].tolist()
 
     def _card(titulo):
-        _, poster, ptbr, *_ = buscar_info_tmdb(titulo)
+        poster, ptbr = buscar_poster(titulo)
         row     = filmes[filmes['title'] == titulo]
         generos = row.iloc[0]['genres'].split('|')[:2] if not row.empty else []
         return {'titulo': titulo, 'titulo_ptbr': ptbr, 'poster': poster, 'generos': generos}

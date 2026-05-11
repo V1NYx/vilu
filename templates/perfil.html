@@ -64,7 +64,7 @@
                 <span class="post-nota">{{ c.nota }}</span>
               {% endif %}
               <span class="perfil-comentario-data">{{ c.data[:10] }}</span>
-              <form method="POST" action="{{ url_for('excluir_comentario', comentario_id=c.id) }}"
+              <form method="POST" action="{{ url_for('excluir_comentario', cid=c.id) }}"
                     style="display:inline" onsubmit="return confirm('Excluir?')">
                 <button type="submit" class="btn-excluir">Excluir</button>
               </form>

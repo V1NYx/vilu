@@ -1,157 +1,130 @@
 {% extends "base.html" %}
-{% block title %}Principal — VILU{% endblock %}
+{% block title %}Comunidade — VILU{% endblock %}
 
 {% block content %}
 <div class="page">
 
-  <div class="search-hero" style="padding:1.5rem 0 1rem">
-    <h1>VILU</h1>
-    <p>Busque um filme ou veja o que a comunidade está assistindo</p>
-
+  <div class="search-hero" style="padding:1.25rem 0 1.5rem">
     <form method="POST" action="{{ url_for('home') }}" id="form-principal" autocomplete="off">
       <div class="search-row" style="position:relative">
-        <input
-          type="text"
-          id="input-principal"
-          name="nome_filme"
-          placeholder="Buscar filme..."
-          required
-        >
+        <input type="text" id="input-principal" name="nome_filme"
+               placeholder="Buscar filme..." required>
         <ul id="sugestoes-principal" class="autocomplete-list"></ul>
         <button type="submit" class="btn btn-primary">Buscar</button>
       </div>
     </form>
   </div>
 
-  <h3 style="font-size:1rem;color:var(--text-muted);margin-bottom:1rem">
-    Avaliações da comunidade
-  </h3>
+  <div class="forum-header">
+    <h2 class="forum-titulo">Comunidade</h2>
+    {% if posts %}
+      <span class="forum-contagem">{{ posts|length }} publicações</span>
+    {% endif %}
+  </div>
 
   {% if posts %}
-    {% for p in posts %}
-      <div class="post-card">
-        <div class="post-header">
-          <a href="{{ url_for('usuario_publico', uid=p.autor_id) }}" class="post-autor">
-            {{ p.autor }}
+    <div class="forum-lista">
+      {% for p in posts %}
+        <div class="forum-post">
+
+          <!-- Pôster -->
+          <a href="{{ url_for('detalhes', nome_filme=p.titulo) }}" class="forum-post-poster-link">
+            {% if p.poster_url %}
+              <img src="{{ p.poster_url }}" class="forum-post-poster" alt="{{ p.titulo }}">
+            {% else %}
+              <div class="forum-post-poster forum-post-poster-vazio">
+                {{ p.titulo[:1] }}
+              </div>
+            {% endif %}
           </a>
-          {% if p.nota %}
-            <span class="post-nota">{{ p.nota }}</span>
-          {% endif %}
-          <span class="post-data">{{ p.data[:10] }}</span>
+
+          <!-- Conteúdo -->
+          <div class="forum-post-corpo">
+
+            <div class="forum-post-topo">
+              <a href="{{ url_for('detalhes', nome_filme=p.titulo) }}"
+                 class="forum-post-filme">{{ p.titulo }}</a>
+              {% if p.nota %}
+                <span class="forum-post-nota">{{ p.nota }}</span>
+              {% endif %}
+            </div>
+
+            <p class="forum-post-texto">{{ p.comentario }}</p>
+
+            <div class="forum-post-rodape">
+              <a href="{{ url_for('usuario_publico', uid=p.autor_id) }}"
+                 class="forum-post-autor">{{ p.autor }}</a>
+              <span class="forum-post-sep">·</span>
+              <span class="forum-post-data">{{ p.data[:10] }}</span>
+              <span class="forum-post-sep">·</span>
+              <a href="{{ url_for('detalhes', nome_filme=p.titulo) }}"
+                 class="forum-post-ver">Ver filme</a>
+              {% if p.autor_id == user_id %}
+                <span class="forum-post-sep">·</span>
+                <form method="POST"
+                      action="{{ url_for('excluir_comentario', cid=p.id) }}"
+                      style="display:inline"
+                      onsubmit="return confirm('Excluir este post?')">
+                  <button type="submit" class="btn-excluir">Excluir</button>
+                </form>
+              {% endif %}
+            </div>
+
+          </div>
         </div>
-
-        <a href="{{ url_for('detalhes', nome_filme=p.titulo) }}" class="post-banner">
-          {% if p.poster_url %}
-            <img src="{{ p.poster_url }}" class="post-banner-poster" alt="{{ p.titulo }}">
-          {% else %}
-            <span class="post-banner-icon"></span>
-          {% endif %}
-          <span class="post-banner-titulo">{{ p.titulo }}</span>
-          <span class="post-banner-link">Ver detalhes</span>
-        </a>
-
-        <div class="post-texto">{{ p.comentario }}</div>
-
-        <div class="post-actions">
-          <a href="{{ url_for('detalhes', nome_filme=p.titulo) }}" class="btn-ver-filme">
-            Ver filme
-          </a>
-          {% if p.autor_id == user_id %}
-            <form method="POST"
-                  action="{{ url_for('excluir_comentario', comentario_id=p.id) }}"
-                  style="display:inline"
-                  onsubmit="return confirm('Excluir este post?')">
-              <button type="submit" class="btn-excluir">Excluir</button>
-            </form>
-          {% endif %}
-        </div>
-      </div>
-    {% endfor %}
+      {% endfor %}
+    </div>
 
   {% else %}
-    <div class="empty-state" style="padding:3rem">
-      <div class="icon"></div>
-      <p>Nenhuma avaliação publicada ainda.</p>
-      <p style="margin-top:0.5rem;font-size:0.85rem">
-        Busque um filme e publique sua primeira avaliação!
-      </p>
+    <div class="empty-state" style="padding:4rem">
+      <p>Nenhuma publicação ainda. Seja o primeiro!</p>
+      <a href="{{ url_for('home') }}" class="btn btn-primary" style="margin-top:1.25rem">
+        Buscar filmes
+      </a>
     </div>
   {% endif %}
 
 </div>
 
 <script>
-// Mesmo autocomplete corrigido da index.html — mesma lógica mousedown
 const inputP     = document.getElementById('input-principal');
 const sugestoesP = document.getElementById('sugestoes-principal');
-let   timerP     = null;
-let   ignorarP   = false;
+let   timerP = null, ignorarP = false;
 
 inputP.addEventListener('input', () => {
   clearTimeout(timerP);
   const q = inputP.value.trim();
   if (q.length < 2) { fecharP(); return; }
-
   timerP = setTimeout(async () => {
     try {
-      const resp  = await fetch(`/buscar_filmes?q=${encodeURIComponent(q)}`);
-      const lista = await resp.json();
+      const lista = await fetch(`/buscar_filmes?q=${encodeURIComponent(q)}`).then(r => r.json());
       if (!lista.length) { fecharP(); return; }
-
       sugestoesP.innerHTML = '';
       lista.forEach(titulo => {
         const li = document.createElement('li');
-        li.textContent    = titulo;
+        li.textContent = titulo;
         li.dataset.titulo = titulo;
-        li.addEventListener('mousedown', (e) => {
-          e.preventDefault();
-          ignorarP = true;
-          escolherP(titulo);
-        });
+        li.addEventListener('mousedown', e => { e.preventDefault(); ignorarP = true; escolherP(titulo); });
         sugestoesP.appendChild(li);
       });
       sugestoesP.style.display = 'block';
-    } catch (err) {
-      console.error('Erro autocomplete:', err);
-    }
+    } catch(e) {}
   }, 250);
 });
 
-function escolherP(titulo) {
-  inputP.value = titulo;
-  fecharP();
-  document.getElementById('form-principal').submit();
-}
-
-function fecharP() {
-  sugestoesP.innerHTML = '';
-  sugestoesP.style.display = 'none';
-  ignorarP = false;
-}
-
-document.addEventListener('click', (e) => {
+function escolherP(t) { inputP.value = t; fecharP(); document.getElementById('form-principal').submit(); }
+function fecharP() { sugestoesP.innerHTML = ''; sugestoesP.style.display = 'none'; ignorarP = false; }
+document.addEventListener('click', e => {
   if (ignorarP) { ignorarP = false; return; }
   if (!e.target.closest('.search-row')) fecharP();
 });
-
-inputP.addEventListener('keydown', (e) => {
+inputP.addEventListener('keydown', e => {
   const itens = sugestoesP.querySelectorAll('li');
   const ativo = sugestoesP.querySelector('li.ativo');
   let idx = Array.from(itens).indexOf(ativo);
-
-  if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    if (ativo) ativo.classList.remove('ativo');
-    const prox = itens[Math.min(idx + 1, itens.length - 1)];
-    if (prox) { prox.classList.add('ativo'); inputP.value = prox.dataset.titulo; }
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    if (ativo) ativo.classList.remove('ativo');
-    const ant = itens[Math.max(idx - 1, 0)];
-    if (ant) { ant.classList.add('ativo'); inputP.value = ant.dataset.titulo; }
-  } else if (e.key === 'Escape') {
-    fecharP();
-  }
+  if (e.key === 'ArrowDown') { e.preventDefault(); ativo?.classList.remove('ativo'); const n = itens[Math.min(idx+1,itens.length-1)]; if(n){n.classList.add('ativo');inputP.value=n.dataset.titulo;} }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); ativo?.classList.remove('ativo'); const n = itens[Math.max(idx-1,0)]; if(n){n.classList.add('ativo');inputP.value=n.dataset.titulo;} }
+  else if (e.key === 'Escape') fecharP();
 });
 </script>
 {% endblock %}
